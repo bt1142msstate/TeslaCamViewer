@@ -10,6 +10,11 @@ Research date: May 29, 2026.
 
 The app is source-ready for public development and has an MSIX packaging scaffold. It is not ready for final Microsoft Store submission until the final product name, Partner Center identity values, final listing assets, and certification validation are completed.
 
+The planned Store app should be free. The free core viewer should not include
+ads, promotional overlays, export watermarks, or forced branding. Any future
+subscription or donation path should be optional and clearly separated from the
+local viewing, telemetry, marker, and export workflows.
+
 Verified on May 29, 2026:
 
 - Release x64 build passes locally.
@@ -69,6 +74,10 @@ Sources:
 - Decide whether crash logging should move from the app folder to local app data for packaged builds.
 - Add a clear first-run or settings privacy note before visual context or Tesla API features ship.
 - Add subscription disclosures before any paid plan is offered.
+- Add donation copy only if a donation path exists, and make clear that donating
+  is optional support for development and upkeep.
+- Verify final Store listing copy says the free version has no forced branding
+  or export watermarks.
 
 ## Known Packaging Concerns
 

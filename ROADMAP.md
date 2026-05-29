@@ -35,7 +35,7 @@ Planned optional subscription features for the free Windows Store version:
 - Richer event categorization and metadata extraction.
 - Optional Tesla API integrations for vehicle-aware context.
 
-The subscription path must be opt-in and clearly explain what data is sent outside the device.
+The subscription path must be opt-in and clearly explain what data is sent outside the device. The free core viewer should remain useful without a subscription and should not add ads, promotional overlays, export watermarks, or forced branding. Donations may be offered separately for people who want to support development, signing, hosting, testing, and upkeep.
 
 ## Design
 
@@ -56,7 +56,8 @@ The subscription path must be opt-in and clearly explain what data is sent outsi
   artwork once the final name and logo are chosen.
 - Maintain the GitHub Pages site with screenshots, feature overview,
   download/store links, source-available license summary, privacy policy,
-  roadmap links, and final branding when the published name is chosen.
+  free-app positioning, optional support paths, roadmap links, and final
+  branding when the published name is chosen.
 
 ## Tesla API
 
@@ -73,7 +74,9 @@ Tesla API support must be implemented with explicit user consent, secure token s
 
 The app is planned for eventual Microsoft Store publication under a final product
 name that differs from this repository's working name. The Store version should
-be free, with any subscription clearly separated from the core local viewer.
+be free, with any subscription and donation path clearly separated from the core
+local viewer. The free version should not add ads, promotional overlays, export
+watermarks, or forced branding.
 
 A macOS version is also planned. The Windows app remains the first target while
 the viewer, import, stitching, telemetry, and export workflows stabilize.

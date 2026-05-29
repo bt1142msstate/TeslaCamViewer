@@ -1,7 +1,7 @@
 <div align="center">
   <img src="Assets/AppIcon.svg" width="86" alt="TESLA Cam app icon">
   <h1>TESLA Cam</h1>
-  <p><strong>Source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry, markers, and export.</strong></p>
+  <p><strong>Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry, markers, and export.</strong></p>
   <p>
     <a href="https://github.com/bt1142msstate/TeslaCamViewer/actions/workflows/windows-build.yml"><img alt="Windows Build" src="https://img.shields.io/github/actions/workflow/status/bt1142msstate/TeslaCamViewer/windows-build.yml?branch=main&label=windows%20build"></a>
     <a href="https://github.com/bt1142msstate/TeslaCamViewer/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/bt1142msstate/TeslaCamViewer?include_prereleases&label=release"></a>
@@ -14,6 +14,11 @@
 ![TESLA Cam playback dashboard with stitched TeslaCam cameras and telemetry](docs/screenshots/app-playback-dashboard.png)
 
 TESLA Cam is a Windows desktop viewer for TeslaCam footage. It is built with WinUI 3 and Windows App SDK, and focuses on turning Tesla's split camera files into a drive-centered viewing experience.
+
+The core app is intended to stay free. The free version should not add ads,
+promotional overlays, export watermarks, or forced branding to your clips.
+Future subscriptions and donations may support cloud-assisted features,
+development, signing, hosting, testing, and upkeep, but they should be optional.
 
 This project is not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and related vehicle names are trademarks of their respective owners.
 
@@ -90,10 +95,12 @@ Command-line build used during development:
 ## Microsoft Store Plan
 
 The Windows Store version is planned to be free and published under a final
-name that differs from this repository name. A future optional subscription may
-add faster and more accurate cloud-assisted visual context using Gemini, plus
-Tesla API powered features. The free app should remain useful without a
-subscription.
+name that differs from this repository name. The free version should remain
+useful without a subscription and should not add ads, promotional overlays,
+export watermarks, or forced branding. A future optional subscription may add
+faster and more accurate cloud-assisted visual context using Gemini, plus Tesla
+API powered features. Donations may also be offered for people who want to
+support development and upkeep.
 
 See [STORE_READINESS.md](STORE_READINESS.md) for the current packaging and certification checklist.
 
