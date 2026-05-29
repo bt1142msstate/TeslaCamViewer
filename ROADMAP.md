@@ -26,6 +26,10 @@ Planned local visual context features:
 - Ask questions about a clip or a drive, such as "when did a pedestrian appear?" or "show the moment the car changed lanes."
 - Flag and separate clips into categories.
 - Search by visual events, telemetry events, and time ranges.
+- Generate representative frame photos for clips so the clip list can show a
+  visual preview for each drive or segment.
+- Explore a gallery-style clip browsing mode for scanning visual context across
+  many clips quickly.
 - Keep local analysis available without requiring a subscription.
 
 Planned optional subscription features for the free Windows Store version:
@@ -43,6 +47,8 @@ The subscription path must be opt-in and clearly explain what data is sent outsi
 - Cleaner clip list density and sorting controls.
 - Customizable design themes.
 - Layout customization for camera views and telemetry cards.
+- Optional telemetry overlays for clip previews or gallery items, with the
+  default layout keeping telemetry separate so video thumbnails are not covered.
 - Better empty states, progress states, and import/export flows.
 
 ## Branding And Web
