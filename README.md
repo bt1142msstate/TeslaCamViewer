@@ -33,7 +33,7 @@ Categories: TeslaCam viewer, dashcam footage review, multi-camera video player,
 vehicle telemetry, Windows desktop app, video stitching, clip export, marker
 based editing, Sentry Mode review.
 
-Tags: `teslacam`, `tesla-dashcam`, `dashcam-viewer`, `winui3`,
+Tags: `tesla`, `teslacam`, `tesla-dashcam`, `dashcam-viewer`, `winui3`,
 `windows-app-sdk`, `dotnet`, `ffmpeg`, `mp4`, `telemetry`, `video-stitching`,
 `video-export`, `sentry-mode`, `source-available`, `github-releases`, `winget`.
 
