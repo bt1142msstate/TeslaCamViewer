@@ -46,13 +46,15 @@ Sources:
 ## Open Store Tasks
 
 - Choose and reserve the final app name in Partner Center.
+- Choose the final logo and production icon set for the published app.
 - Replace `Package.appxmanifest` identity values with Partner Center identity values.
 - Build the Store upload package with Partner Center identity selected.
 - Run Windows App Certification Kit again against the final Partner Center/Store identity package and save the report.
 - Decide final Store route:
   - MSIX package with a packaging project if bundled helper executables require it.
   - Store-distributed Win32 installer if MSIX packaging is not practical.
-- Produce final Store artwork and screenshots.
+- Produce final Store artwork, screenshots, and promotional images.
+- Publish the app's GitHub Pages site or another stable public product site.
 - Produce Store listing copy, category, keywords, age rating, and support contact.
 - Publish a stable privacy policy URL.
 - Confirm FFmpeg LGPL notice and binary distribution are acceptable for the chosen package route.

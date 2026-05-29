@@ -6,7 +6,8 @@ This project is not affiliated with, endorsed by, or sponsored by Tesla, Inc. Te
 
 The public repository uses a working project name. The published app is planned
 to ship under a different final name, and a macOS version is planned after the
-Windows app is further along.
+Windows app is further along. A public GitHub Pages site is planned for the
+published app once the final name, logo, screenshots, and privacy URL are ready.
 
 ## Current Features
 

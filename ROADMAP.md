@@ -41,6 +41,19 @@ The subscription path must be opt-in and clearly explain what data is sent outsi
 - Layout customization for camera views and telemetry cards.
 - Better empty states, progress states, and import/export flows.
 
+## Branding And Web
+
+- Choose the final published app name.
+- Develop a final app logo, icon set, and visual identity for the published
+  product.
+- Make the logo communicate drive review, camera footage, recording, and
+  telemetry without implying Tesla affiliation or ownership of Tesla marks.
+- Replace the current working icon assets with production-ready Windows Store
+  artwork once the final name and logo are chosen.
+- Create a GitHub Pages site for the app with screenshots, feature overview,
+  download/store links, source-available license summary, privacy policy, and
+  roadmap links.
+
 ## Tesla API
 
 Tesla API usage is planned as an optional subscription feature. Possible uses:
