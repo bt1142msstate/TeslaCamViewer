@@ -7,6 +7,8 @@ This roadmap describes intended product direction. It is not a promise that ever
 - Finish Microsoft Store packaging validation.
 - Publish GitHub Releases with a portable Windows build and PowerShell installer
   for users who do not have Visual Studio.
+- Add a signed installer or signed package and submit a WinGet manifest once the
+  final app name and package identity are chosen.
 - Add a first-run privacy and local-media explanation.
 - Improve archive import handling for more ZIP layouts.
 - Add stronger export progress reporting for multi-view exports.

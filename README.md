@@ -34,19 +34,20 @@ published app once the final name, logo, screenshots, and privacy URL are ready.
 
 ## Install From GitHub
 
-Users do not need Visual Studio to try a published GitHub release. Run this in
-PowerShell:
+Users do not need Visual Studio to try a published GitHub release. The long-term
+recommended command-line path is WinGet after the final package name, signing,
+and Windows Package Manager manifest are ready:
 
 ```powershell
-$installer = Join-Path $env:TEMP 'teslacam-install.ps1'
-Invoke-WebRequest 'https://raw.githubusercontent.com/bt1142msstate/TeslaCamViewer/main/scripts/install.ps1' -OutFile $installer
-powershell -ExecutionPolicy Bypass -File $installer
+winget install --id BrandonTemple.FinalAppName -e
 ```
 
-This installs the latest non-draft GitHub release to
-`%LOCALAPPDATA%\Programs\TESLA Cam` and creates app shortcuts. See
-[INSTALL.md](INSTALL.md) for manual install, stable-only install, and uninstall
-details.
+Until that package exists, download `Install-TESLA-Cam.ps1` from the
+[latest GitHub Release](https://github.com/bt1142msstate/TeslaCamViewer/releases)
+and run it in PowerShell. It installs the selected non-draft release to
+`%LOCALAPPDATA%\Programs\TESLA Cam`, verifies the package SHA-256 when GitHub
+provides an asset digest, and creates app shortcuts. See [INSTALL.md](INSTALL.md)
+for preview install, manual install, stable-only install, and uninstall details.
 
 ## Build
 

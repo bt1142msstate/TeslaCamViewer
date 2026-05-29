@@ -51,6 +51,9 @@ Sources:
 - Replace `Package.appxmanifest` identity values with Partner Center identity values.
 - Build the Store upload package with Partner Center identity selected.
 - Run Windows App Certification Kit again against the final Partner Center/Store identity package and save the report.
+- Add code signing for non-Store GitHub release packages.
+- Submit a WinGet manifest after the final app name, package identity, and
+  release artifact URL are stable.
 - Decide final Store route:
   - MSIX package with a packaging project if bundled helper executables require it.
   - Store-distributed Win32 installer if MSIX packaging is not practical.

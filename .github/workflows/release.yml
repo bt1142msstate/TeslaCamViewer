@@ -61,6 +61,8 @@ jobs:
           $stageDir = Join-Path $artifactRoot 'TESLA-Cam-win-x64'
           $zipPath = Join-Path $artifactRoot 'TESLA-Cam-win-x64-portable.zip'
           $checksumPath = Join-Path $artifactRoot 'SHA256SUMS.txt'
+          $installScriptPath = Join-Path $artifactRoot 'Install-TESLA-Cam.ps1'
+          $uninstallScriptPath = Join-Path $artifactRoot 'Uninstall-TESLA-Cam.ps1'
 
           if (-not (Test-Path (Join-Path $outputDir 'TeslaCamViewer.exe'))) {
             throw "Build output is missing TeslaCamViewer.exe: $outputDir"
@@ -83,6 +85,8 @@ jobs:
           Compress-Archive -Path $stageDir -DestinationPath $zipPath -Force
           $hash = Get-FileHash -Algorithm SHA256 -Path $zipPath
           "$($hash.Hash)  $(Split-Path $zipPath -Leaf)" | Set-Content -Path $checksumPath -Encoding ASCII
+          Copy-Item -Path scripts\install.ps1 -Destination $installScriptPath -Force
+          Copy-Item -Path scripts\uninstall.ps1 -Destination $uninstallScriptPath -Force
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
@@ -91,6 +95,8 @@ jobs:
           path: |
             artifacts/TESLA-Cam-win-x64-portable.zip
             artifacts/SHA256SUMS.txt
+            artifacts/Install-TESLA-Cam.ps1
+            artifacts/Uninstall-TESLA-Cam.ps1
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
@@ -104,22 +110,47 @@ jobs:
           $notes = @"
           Portable Windows x64 build for direct GitHub install.
 
-          The zip includes the self-contained app build, license files, privacy notice, third-party notices, and the LGPL shared FFmpeg runtime used for stitching and export.
+          The zip includes the self-contained app build, license files, privacy notice, third-party notices, and the LGPL shared FFmpeg runtime used for stitching and export. The installer script verifies the release asset SHA-256 before extracting the package when GitHub provides the asset digest.
 
-          See INSTALL.md in the repository for the PowerShell installer command.
+          Recommended preview install:
+
+          ```powershell
+          powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1 -ReleaseTag $tag
+          ```
+
+          See INSTALL.md in the repository for the full install notes.
           "@
 
-          $args = @(
-            'release', 'create', $tag,
+          $assets = @(
             'artifacts/TESLA-Cam-win-x64-portable.zip',
             'artifacts/SHA256SUMS.txt',
-            '--repo', $env:GITHUB_REPOSITORY,
-            '--title', "TESLA Cam $tag",
-            '--notes', $notes
+            'artifacts/Install-TESLA-Cam.ps1',
+            'artifacts/Uninstall-TESLA-Cam.ps1'
           )
 
-          if ($isPrerelease) {
-            $args += '--prerelease'
-          }
+          $null = gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          $releaseExists = $LASTEXITCODE -eq 0
+          $global:LASTEXITCODE = 0
 
-          gh @args
+          if ($releaseExists) {
+            gh release upload $tag @assets --repo $env:GITHUB_REPOSITORY --clobber
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --title "TESLA Cam $tag" --notes $notes
+            if ($isPrerelease) {
+              gh release edit $tag --repo $env:GITHUB_REPOSITORY --prerelease
+            }
+          }
+          else {
+            $args = @(
+              'release', 'create', $tag
+            ) + $assets + @(
+              '--repo', $env:GITHUB_REPOSITORY,
+              '--title', "TESLA Cam $tag",
+              '--notes', $notes
+            )
+
+            if ($isPrerelease) {
+              $args += '--prerelease'
+            }
+
+            gh @args
+          }
