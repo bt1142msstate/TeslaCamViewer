@@ -28,6 +28,9 @@ Windows app is further along. A public GitHub Pages preview site is available at
 https://bt1142msstate.github.io/TeslaCamViewer/ and should be refreshed once the
 final name, logo, screenshots, and privacy URL are ready.
 
+Project owner: [Brandon Temple](https://brandontemple.com/). Contact links are
+available on the [portfolio contact section](https://brandontemple.com/#contact).
+
 ## Screenshots
 
 ![TESLA Cam drive scan and clip list](docs/screenshots/app-drive-overview.png)

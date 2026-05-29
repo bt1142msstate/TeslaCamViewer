@@ -27,6 +27,11 @@
     "operatingSystem": "Windows 10 or newer",
     "description": "Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry HUD, markers, and export tools.",
     "softwareVersion": "0.1.0-preview.1",
+    "author": {
+      "@type": "Person",
+      "name": "Brandon Temple",
+      "url": "https://brandontemple.com/"
+    },
     "codeRepository": "https://github.com/bt1142msstate/TeslaCamViewer",
     "downloadUrl": "https://github.com/bt1142msstate/TeslaCamViewer/releases",
     "license": "https://github.com/bt1142msstate/TeslaCamViewer/blob/main/LICENSE",
@@ -477,6 +482,16 @@
       gap: 20px;
     }
 
+    .footer-credit a {
+      color: #dce6ef;
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    .footer-credit a:hover {
+      color: var(--cyan);
+    }
+
     .footer-links {
       display: flex;
       flex-wrap: wrap;
@@ -790,8 +805,10 @@
 
   <footer>
     <div class="footer-inner">
-      <span>TESLA Cam preview site</span>
+      <span class="footer-credit">TESLA Cam preview site by <a href="https://brandontemple.com/" rel="me">Brandon Temple</a></span>
       <div class="footer-links">
+        <a href="https://brandontemple.com/" rel="me">Portfolio</a>
+        <a href="https://brandontemple.com/#contact">Contact</a>
         <a href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/PRIVACY.md">Privacy</a>
         <a href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/LICENSE">License</a>
         <a href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/ROADMAP.md">Roadmap</a>
