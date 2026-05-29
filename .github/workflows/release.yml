@@ -69,11 +69,12 @@ jobs:
           Remove-Item -Path $artifactRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 
-          robocopy $outputDir $stageDir /E /XD AppPackages /XF *.pdb *.msixsym
+          robocopy $outputDir $stageDir /E /XD AppPackages /XF *.pdb *.msixsym /NFL /NDL /NJH /NJS /NP
           $robocopyExit = $LASTEXITCODE
           if ($robocopyExit -gt 7) {
             exit $robocopyExit
           }
+          $global:LASTEXITCODE = 0
 
           Copy-Item -Path README.md,INSTALL.md,LICENSE,PRIVACY.md,THIRD-PARTY-NOTICES.txt -Destination $stageDir -Force
           New-Item -ItemType Directory -Path (Join-Path $stageDir 'scripts') -Force | Out-Null
