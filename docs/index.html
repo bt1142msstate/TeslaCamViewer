@@ -454,6 +454,87 @@
       margin-bottom: 7px;
     }
 
+    .cashapp-support {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .cashapp-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 52px;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.38);
+      border-radius: 8px;
+      background: #00e013;
+      color: #041807;
+      text-decoration: none;
+      font-weight: 850;
+      box-shadow: 0 14px 28px rgba(0, 224, 19, 0.2);
+      transition: filter 160ms ease, transform 160ms ease;
+    }
+
+    .cashapp-link:hover,
+    .cashapp-link:focus-visible {
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .cashapp-link img {
+      width: 32px;
+      height: 32px;
+      flex: 0 0 auto;
+    }
+
+    .cashapp-link span {
+      display: grid;
+      min-width: 0;
+      line-height: 1.1;
+    }
+
+    .cashapp-link small {
+      color: rgba(4, 24, 7, 0.72);
+      font-size: 0.72rem;
+      font-weight: 850;
+      overflow-wrap: anywhere;
+    }
+
+    .cashapp-qr-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 650;
+      text-decoration: none;
+      transition: color 160ms ease;
+    }
+
+    .cashapp-qr-row:hover,
+    .cashapp-qr-row:focus-visible {
+      color: var(--text);
+      outline: none;
+    }
+
+    .cashapp-qr {
+      width: 86px;
+      height: 86px;
+      flex: 0 0 auto;
+      padding: 8px;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .cashapp-qr img {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
     .notice {
       display: grid;
       grid-template-columns: auto 1fr;
@@ -505,6 +586,17 @@
 
     .footer-links a:hover {
       color: var(--cyan);
+    }
+
+    .cashapp-footer-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .cashapp-footer-link img {
+      width: 17px;
+      height: 17px;
     }
 
     @media (max-width: 940px) {
@@ -763,8 +855,18 @@
         <article class="roadmap-item">
           <strong>Donations Welcome</strong>
           <p>Optional Cash App support helps fund development, hosting, signing, testing, and upkeep. Support is not required for the free core viewer.</p>
-          <div class="button-row">
-            <a class="button" href="https://cash.app/$BrandonTemple0" aria-label="Support TESLA Cam development on Cash App">Cash App $BrandonTemple0</a>
+          <div class="cashapp-support">
+            <a class="cashapp-link" href="https://cash.app/$BrandonTemple0" aria-label="Support TESLA Cam development on Cash App">
+              <img src="assets/cashapp-symbol.svg" alt="">
+              <span>
+                Cash App
+                <small>$BrandonTemple0</small>
+              </span>
+            </a>
+            <a class="cashapp-qr-row" href="https://cash.app/$BrandonTemple0" aria-label="Scan or open Cash App support link">
+              <span class="cashapp-qr"><img src="assets/cashapp-qr.svg" alt=""></span>
+              <span>Scan to support development</span>
+            </a>
           </div>
         </article>
       </div>
@@ -812,7 +914,10 @@
         <a href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/PRIVACY.md">Privacy</a>
         <a href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/LICENSE">License</a>
         <a href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/ROADMAP.md">Roadmap</a>
-        <a href="https://cash.app/$BrandonTemple0">Cash App</a>
+        <a class="cashapp-footer-link" href="https://cash.app/$BrandonTemple0">
+          <img src="assets/cashapp-symbol.svg" alt="">
+          Cash App
+        </a>
       </div>
     </div>
   </footer>
