@@ -70,25 +70,27 @@ Tags: `tesla`, `teslacam`, `tesla-dashcam`, `dashcam-viewer`, `winui3`,
 
 ## Install From GitHub
 
-Users do not need Visual Studio to try a published GitHub release. The long-term
-recommended command-line path is WinGet after the final package name, signing,
-and Windows Package Manager manifest are ready:
+Users do not need Visual Studio to try a published GitHub release. The easiest
+preview path is the one-click Windows setup from the project site. The long-term
+lowest-friction path is Microsoft Store distribution, with WinGet planned as the
+recommended command-line option after the final package name, signing, and
+Windows Package Manager manifest are ready:
 
 ```powershell
 winget install --id BrandonTemple.FinalAppName -e
 ```
 
-Until that package exists, the preview site links directly to the current
-GitHub Release assets:
+Current preview release assets:
 
-- [Download Windows portable ZIP](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/TESLA-Cam-win-x64-portable.zip)
-- [Download PowerShell installer script](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/Install-TESLA-Cam.ps1)
-- [View checksums](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/SHA256SUMS.txt)
+- [Download Windows setup](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe)
+- [Download portable ZIP](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-portable.zip)
+- [Download PowerShell fallback script](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/Install-TESLA-Cam.ps1)
+- [View checksums](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/SHA256SUMS.txt)
 
-The installer script installs the selected non-draft release to
-`%LOCALAPPDATA%\Programs\TESLA Cam`, verifies the package SHA-256 when GitHub
-provides an asset digest, and creates app shortcuts. See [INSTALL.md](INSTALL.md)
-for preview install, manual install, stable-only install, and uninstall details.
+The setup installer installs the app under the user's profile and creates app
+shortcuts. The portable ZIP and PowerShell script remain available for manual or
+scripted installs. See [INSTALL.md](INSTALL.md) for preview install, manual
+install, stable-only install, and uninstall details.
 
 ## Build
 

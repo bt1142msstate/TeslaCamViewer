@@ -1,9 +1,20 @@
 # Install From GitHub
 
-The long-term recommended command-line install path for Windows is WinGet, with
-GitHub Releases used as the package source for release assets. That path will be
-enabled after the final package name, signing, and Windows Package Manager
-manifest are ready.
+The easiest preview install path is the one-click Windows setup executable from
+GitHub Releases. It does not require Visual Studio, build tools, command-line
+Git, or manual ZIP extraction.
+
+Recommended preview download:
+
+https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe
+
+Download the setup executable and run it. It installs TESLA Cam under the user's
+profile, creates Start Menu and desktop shortcuts, and launches the app.
+
+The long-term lowest-friction Windows path is Microsoft Store distribution. The
+long-term command-line install path is WinGet, with GitHub Releases used as the
+package source for release assets. That path will be enabled after the final
+package name, signing, and Windows Package Manager manifest are ready.
 
 Planned stable command:
 
@@ -11,7 +22,9 @@ Planned stable command:
 winget install --id BrandonTemple.FinalAppName -e
 ```
 
-Until that WinGet package exists, use the GitHub Release assets. Download
+## Scripted Install Fallback
+
+The PowerShell installer remains available for scripted installs. Download
 `Install-TESLA-Cam.ps1` from the latest release:
 
 https://github.com/bt1142msstate/TeslaCamViewer/releases
@@ -25,7 +38,7 @@ powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1
 To install a specific release tag:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1 -ReleaseTag v0.1.0-preview.1
+powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1 -ReleaseTag v0.1.0-preview.2
 ```
 
 The installer downloads the selected non-draft GitHub release, verifies the zip
@@ -47,9 +60,9 @@ powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1 -StableOnly
 
 ## Manual Portable Install
 
-Users who do not want to run the installer script can download the latest
-`TESLA-Cam-win-x64-portable.zip` from GitHub Releases, extract it anywhere under
-their user profile, and run `TeslaCamViewer.exe`.
+Users who do not want to run the setup executable or installer script can
+download the latest `TESLA-Cam-win-x64-portable.zip` from GitHub Releases,
+extract it anywhere under their user profile, and run `TeslaCamViewer.exe`.
 
 The portable zip includes the self-contained Windows app build and FFmpeg runtime
 used for stitching and export.
@@ -67,10 +80,10 @@ powershell -ExecutionPolicy Bypass -File $uninstaller
 ## Packaging Notes
 
 The GitHub release package is not the final Microsoft Store distribution path.
-Until Store signing is ready, Windows may warn that the app was downloaded from
-the internet or is from an unknown publisher. The Store version is planned to use
-normal signed install and update flow.
+Until Store signing or Authenticode signing is ready, Windows may warn that the
+app was downloaded from the internet or is from an unknown publisher. The Store
+version is planned to use normal signed install and update flow.
 
 WinGet packaging should be submitted after the final app name and release
 identity are chosen. The manifest should point directly at the GitHub Release
-asset for the installer package and include the release asset hash.
+asset for the setup executable and include the release asset hash.

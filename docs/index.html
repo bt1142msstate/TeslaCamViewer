@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TESLA Cam - Windows TeslaCam Viewer</title>
   <meta name="description" content="Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry HUD, markers, and export tools. Optional subscription and donations may support future development.">
-  <meta name="keywords" content="free TeslaCam viewer, Tesla dashcam, dashcam viewer, Sentry Mode, Windows TeslaCam app, WinUI 3, vehicle telemetry, video stitching, FFmpeg, MP4 export, GitHub Releases, WinGet">
+  <meta name="keywords" content="free TeslaCam viewer, Tesla dashcam, dashcam viewer, Sentry Mode, Windows TeslaCam app, WinUI 3, vehicle telemetry, video stitching, FFmpeg, MP4 export, GitHub Releases, Windows installer, WinGet">
   <meta name="theme-color" content="#111418">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://bt1142msstate.github.io/TeslaCamViewer/">
@@ -26,14 +26,14 @@
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Windows 10 or newer",
     "description": "Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry HUD, markers, and export tools.",
-    "softwareVersion": "0.1.0-preview.1",
+    "softwareVersion": "0.1.0-preview.2",
     "author": {
       "@type": "Person",
       "name": "Brandon Temple",
       "url": "https://brandontemple.com/"
     },
     "codeRepository": "https://github.com/bt1142msstate/TeslaCamViewer",
-    "downloadUrl": "https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/TESLA-Cam-win-x64-portable.zip",
+    "downloadUrl": "https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe",
     "license": "https://github.com/bt1142msstate/TeslaCamViewer/blob/main/LICENSE",
     "image": "https://bt1142msstate.github.io/TeslaCamViewer/screenshots/app-playback-dashboard.png",
     "offers": {
@@ -718,8 +718,8 @@
       <h1>TESLA Cam</h1>
       <p class="tagline">Review a full drive as one continuous multi-camera session with synchronized playback, embedded telemetry, marker-based export, and a free core app that does not watermark your exports.</p>
       <div class="hero-actions">
-        <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/TESLA-Cam-win-x64-portable.zip">Download Windows ZIP</a>
-        <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/Install-TESLA-Cam.ps1">Installer script</a>
+        <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe">Download Installer</a>
+        <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-portable.zip">Portable ZIP</a>
         <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/INSTALL.md">Install notes</a>
       </div>
       <div class="hero-meta" aria-label="Project highlights">
@@ -808,36 +808,36 @@
 
     <section class="section" id="install">
       <div class="section-heading">
-        <h2>Direct Download</h2>
-        <p>Download the current Windows preview directly from this page. No Visual Studio is required. WinGet remains the planned command-line path after final naming, signing, and package identity are ready.</p>
+        <h2>Download Windows Installer</h2>
+        <p>Download the current Windows preview directly from this page. No Visual Studio, build tools, or manual extraction are required. Early GitHub builds are unsigned, so Windows may show an unknown-publisher warning until Store distribution or code signing is ready.</p>
       </div>
       <div class="install-layout">
         <article class="install-panel">
-          <span class="pill">Preview v0.1.0</span>
-          <h3>Windows Portable ZIP</h3>
-          <p class="muted">Download the x64 portable package, extract it anywhere under your user profile, and run <strong>TeslaCamViewer.exe</strong>.</p>
+          <span class="pill">Recommended</span>
+          <h3>One-Click Windows Setup</h3>
+          <p class="muted">Download the setup executable, run it, and TESLA Cam installs under your user profile with Start Menu and desktop shortcuts.</p>
           <div class="button-row">
-            <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/TESLA-Cam-win-x64-portable.zip">Download ZIP</a>
-            <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/SHA256SUMS.txt">SHA-256</a>
-            <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/tag/v0.1.0-preview.1">Release notes</a>
+            <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe">Download Setup</a>
+            <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/SHA256SUMS.txt">SHA-256</a>
+            <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/tag/v0.1.0-preview.2">Release notes</a>
           </div>
         </article>
         <article class="install-panel">
-          <span class="pill">Shortcuts</span>
-          <h3>PowerShell Installer</h3>
-          <p class="muted">Download the installer script if you want it to fetch the ZIP, verify the checksum, install to local app data, and create shortcuts.</p>
-          <code class="command">powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1</code>
+          <span class="pill">Portable</span>
+          <h3>Manual ZIP Install</h3>
+          <p class="muted">Use the x64 portable package if you prefer manual extraction or want to keep the preview app in a custom folder.</p>
           <div class="button-row">
-            <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/Install-TESLA-Cam.ps1">Download script</a>
+            <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-portable.zip">Download ZIP</a>
             <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/INSTALL.md">Read install docs</a>
           </div>
         </article>
         <article class="install-panel">
-          <span class="pill">Planned</span>
-          <h3>WinGet Package</h3>
-          <p class="muted">The future stable package should install through Windows Package Manager once the final app name and signed package are ready.</p>
+          <span class="pill">Command Line</span>
+          <h3>Script And WinGet Path</h3>
+          <p class="muted">The PowerShell script remains available as a fallback. WinGet is planned after the package name, signed installer, and release identity are stable.</p>
           <code class="command">winget install --id BrandonTemple.FinalAppName -e</code>
           <div class="button-row">
+            <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/Install-TESLA-Cam.ps1">Script fallback</a>
             <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/packaging/winget/README.md">WinGet plan</a>
           </div>
         </article>

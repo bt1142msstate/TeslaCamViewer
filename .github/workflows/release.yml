@@ -89,11 +89,98 @@ jobs:
           Copy-Item -Path scripts\install.ps1 -Destination $installScriptPath -Force
           Copy-Item -Path scripts\uninstall.ps1 -Destination $uninstallScriptPath -Force
 
+      - name: Package one-click installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifactRoot = Join-Path $PWD 'artifacts'
+          $stageDir = Join-Path $artifactRoot 'TESLA-Cam-win-x64'
+          $installerOutputDir = Join-Path $artifactRoot 'velopack'
+          $setupPath = Join-Path $artifactRoot 'TESLA-Cam-win-x64-Setup.exe'
+          $notesPath = Join-Path $artifactRoot 'release-notes.md'
+          $toolDir = Join-Path $env:RUNNER_TEMP 'vpk'
+
+          if (-not (Test-Path (Join-Path $stageDir 'TeslaCamViewer.exe'))) {
+            throw "Installer stage is missing TeslaCamViewer.exe: $stageDir"
+          }
+
+          $packVersion = $env:GITHUB_REF_NAME
+          if ($env:GITHUB_REF -like 'refs/tags/*' -and $packVersion -match '^v(.+)$') {
+            $packVersion = $Matches[1]
+          }
+          else {
+            [xml]$project = Get-Content -Path 'src\TeslaCamViewer\TeslaCamViewer.csproj'
+            $packVersion = @($project.Project.PropertyGroup.Version | Where-Object { $_ })[0]
+          }
+
+          if (-not $packVersion) {
+            throw 'Unable to determine Velopack package version.'
+          }
+
+          @"
+          TESLA Cam preview installer.
+
+          This setup installs the local-first Windows viewer, creates shortcuts, and launches the app.
+          "@ | Set-Content -Path $notesPath -Encoding UTF8
+
+          Remove-Item -Path $installerOutputDir -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path $toolDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $installerOutputDir -Force | Out-Null
+
+          dotnet tool install --tool-path $toolDir vpk --version 1.0.1
+
+          & (Join-Path $toolDir 'vpk.exe') pack `
+            --packId TESLACam `
+            --packVersion $packVersion `
+            --packDir $stageDir `
+            --mainExe TeslaCamViewer.exe `
+            --packTitle 'TESLA Cam' `
+            --packAuthors 'Brandon Temple' `
+            --icon 'src\TeslaCamViewer\Assets\AppIcon.ico' `
+            --releaseNotes $notesPath `
+            --outputDir $installerOutputDir `
+            --runtime win-x64 `
+            --skipVeloAppCheck `
+            --noPortable
+
+          $setupSource = Join-Path $installerOutputDir 'TESLACam-win-Setup.exe'
+          if (-not (Test-Path $setupSource)) {
+            throw "Velopack setup executable was not produced: $setupSource"
+          }
+
+          Copy-Item -Path $setupSource -Destination $setupPath -Force
+
+      - name: Write checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifactRoot = Join-Path $PWD 'artifacts'
+          $checksumPath = Join-Path $artifactRoot 'SHA256SUMS.txt'
+          $assetNames = @(
+            'TESLA-Cam-win-x64-Setup.exe',
+            'TESLA-Cam-win-x64-portable.zip',
+            'Install-TESLA-Cam.ps1',
+            'Uninstall-TESLA-Cam.ps1'
+          )
+
+          $lines = foreach ($assetName in $assetNames) {
+            $assetPath = Join-Path $artifactRoot $assetName
+            if (-not (Test-Path $assetPath)) {
+              throw "Missing release asset before checksum generation: $assetPath"
+            }
+
+            $hash = Get-FileHash -Algorithm SHA256 -Path $assetPath
+            "$($hash.Hash)  $assetName"
+          }
+
+          $lines | Set-Content -Path $checksumPath -Encoding ASCII
+
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
           name: TESLA-Cam-win-x64
           path: |
+            artifacts/TESLA-Cam-win-x64-Setup.exe
             artifacts/TESLA-Cam-win-x64-portable.zip
             artifacts/SHA256SUMS.txt
             artifacts/Install-TESLA-Cam.ps1
@@ -109,20 +196,20 @@ jobs:
           $tag = $env:GITHUB_REF_NAME
           $isPrerelease = $tag -match '(?i)(alpha|beta|preview|rc)'
           $notes = @"
-          Portable Windows x64 build for direct GitHub install.
+          Windows x64 preview build for direct GitHub install.
 
-          The zip includes the self-contained app build, license files, privacy notice, third-party notices, and the LGPL shared FFmpeg runtime used for stitching and export. The installer script verifies the release asset SHA-256 before extracting the package when GitHub provides the asset digest.
+          Recommended install:
 
-          Recommended preview install:
+          1. Download `TESLA-Cam-win-x64-Setup.exe`.
+          2. Run it. The one-click setup installs the app under your user profile, creates shortcuts, and launches TESLA Cam.
 
-          ```powershell
-          powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1 -ReleaseTag $tag
-          ```
+          The portable zip remains available for users who prefer manual extraction. It includes the self-contained app build, license files, privacy notice, third-party notices, and the LGPL shared FFmpeg runtime used for stitching and export. The PowerShell installer script remains available as a fallback and verifies the release asset SHA-256 before extracting the package when GitHub provides the asset digest.
 
           See INSTALL.md in the repository for the full install notes.
           "@
 
           $assets = @(
+            'artifacts/TESLA-Cam-win-x64-Setup.exe',
             'artifacts/TESLA-Cam-win-x64-portable.zip',
             'artifacts/SHA256SUMS.txt',
             'artifacts/Install-TESLA-Cam.ps1',

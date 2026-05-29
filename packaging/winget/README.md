@@ -10,8 +10,9 @@ winget install --id BrandonTemple.FinalAppName -e
 ```
 
 The package should point directly at the GitHub Release asset for the Windows
-installer package and include the asset SHA-256. The current preview release zip
-is useful for testing, but the public WinGet submission should wait until:
+setup executable and include the asset SHA-256. The preview site now uses a
+Velopack-generated setup executable for direct downloads, but the public WinGet
+submission should wait until:
 
 - the final product name is selected;
 - the app has a stable package identifier;

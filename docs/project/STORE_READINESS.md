@@ -21,12 +21,13 @@ Verified on May 29, 2026:
 - Unsigned x64 MSIX package generation passes locally.
 - Windows App Certification Kit reports `OVERALL_RESULT=PASS` for the generated unsigned local MSIX.
 - GitHub Actions `Windows Build` passes on the public repository.
+- Velopack one-click setup generation passes locally for the staged Release output.
 
 The repository contains:
 
 - `src/TeslaCamViewer/Package.appxmanifest`
 - package logo PNG assets in `src/TeslaCamViewer/Assets/`
-- GitHub Release packaging workflow and PowerShell install/uninstall scripts
+- GitHub Release packaging workflow, one-click setup packaging, and PowerShell install/uninstall scripts
 - `src/TeslaCamViewer/Properties/launchSettings.json` with an MSIX launch profile
 - package metadata in `src/TeslaCamViewer/TeslaCamViewer.csproj`
 - privacy, roadmap, architecture, third-party notices, and license files
@@ -39,6 +40,8 @@ Microsoft's current Windows app publishing guidance says:
 - Store submission runs through Partner Center, including account creation, app-name reservation, package upload, listing metadata, certification, and publishing.
 - WinUI 3 Store submission should use MSIX/MSIX bundle packaging.
 - MSIX packages submitted to the Store are re-signed by Microsoft during certification.
+- Direct-download EXE/MSI distribution remains the app owner's responsibility for signing, hosting, updates, and SmartScreen/reputation handling.
+- The `ms-appinstaller` URI protocol is disabled by default as of Microsoft's current guidance, so the site should not rely on web-click MSIX install as the primary preview path.
 - Single-project MSIX is supported for WinUI 3 projects, but more complex packages may need a Windows Application Packaging Project.
 - Store policy compliance and privacy disclosure are required, especially before subscriptions, cloud processing, personal data, or account integrations are added.
 
@@ -48,6 +51,9 @@ Sources:
 - https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/single-project-msix
 - https://learn.microsoft.com/en-us/windows/apps/publish/store-policies
 - https://learn.microsoft.com/en-us/windows/apps/distribute-through-store/how-to-distribute-your-win32-app-through-microsoft-store
+- https://learn.microsoft.com/en-us/windows/package-manager/package/manifest
+- https://support.microsoft.com/en-us/windows/app-browser-control-in-the-windows-security-app-8f68fb65-ebb4-3cfb-4bd7-ef0f376f3dc3
+- https://docs.velopack.io/packaging/installer
 
 ## Open Store Tasks
 
@@ -66,7 +72,9 @@ Sources:
 - Keep the GitHub Pages site current, then update it with final branding and
   Store links after publication.
 - Keep GitHub Releases available as an interim no-Visual-Studio install path
-  until Store distribution is ready.
+  until Store distribution is ready. The current public-site bridge is a
+  Velopack-generated setup executable, with portable ZIP and PowerShell fallback
+  assets retained for manual installs.
 - Produce Store listing copy, category, keywords, age rating, and support contact.
 - Publish a stable privacy policy URL.
 - Confirm FFmpeg LGPL notice and binary distribution are acceptable for the chosen package route.

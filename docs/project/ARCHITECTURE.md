@@ -153,6 +153,13 @@ Future storage:
 
 The development build is currently unpackaged. Store publication is planned through MSIX packaging with `src/TeslaCamViewer/Package.appxmanifest` and Store-owned package identity from Partner Center.
 
-GitHub Release packaging is handled by `.github/workflows/release.yml`. It builds `src/TeslaCamViewer/TeslaCamViewer.csproj`, downloads FFmpeg into `src/TeslaCamViewer/Tools/ffmpeg/bin`, stages the app output, copies root release docs plus `docs/legal/THIRD-PARTY-NOTICES.txt`, and publishes the portable ZIP and install scripts.
+GitHub Release packaging is handled by `.github/workflows/release.yml`. It builds `src/TeslaCamViewer/TeslaCamViewer.csproj`, downloads FFmpeg into `src/TeslaCamViewer/Tools/ffmpeg/bin`, stages the app output, copies root release docs plus `docs/legal/THIRD-PARTY-NOTICES.txt`, and publishes:
+
+- a Velopack-generated one-click Windows setup executable for the public site;
+- the portable ZIP for manual installs;
+- PowerShell install/uninstall fallback scripts;
+- SHA-256 hashes for the downloadable assets.
+
+The preview setup is intentionally treated as a GitHub direct-download bridge. The final consumer path should be Microsoft Store distribution or a signed installer once the final app name and publisher identity are ready.
 
 Final Store submission still requires Partner Center identity values, final artwork, Store listing metadata, and certification validation.
