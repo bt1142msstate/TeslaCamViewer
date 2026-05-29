@@ -42,21 +42,21 @@ jobs:
           }
 
           $sourceBin = $ffmpegExe.Directory.FullName
-          $targetBin = Join-Path $PWD 'Tools\ffmpeg\bin'
+          $targetBin = Join-Path $PWD 'src\TeslaCamViewer\Tools\ffmpeg\bin'
           New-Item -ItemType Directory -Path $targetBin -Force | Out-Null
           Copy-Item -Path (Join-Path $sourceBin '*') -Destination $targetBin -Recurse -Force
 
       - name: Restore
-        run: msbuild TeslaCamViewer.csproj /t:Restore /p:Configuration=Release /p:Platform=x64
+        run: msbuild src\TeslaCamViewer\TeslaCamViewer.csproj /t:Restore /p:Configuration=Release /p:Platform=x64
 
       - name: Build
-        run: msbuild TeslaCamViewer.csproj /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
+        run: msbuild src\TeslaCamViewer\TeslaCamViewer.csproj /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
 
       - name: Package portable zip
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $outputDir = Join-Path $PWD 'bin\x64\Release\net8.0-windows10.0.19041.0\win-x64'
+          $outputDir = Join-Path $PWD 'src\TeslaCamViewer\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64'
           $artifactRoot = Join-Path $PWD 'artifacts'
           $stageDir = Join-Path $artifactRoot 'TESLA-Cam-win-x64'
           $zipPath = Join-Path $artifactRoot 'TESLA-Cam-win-x64-portable.zip'
@@ -78,7 +78,8 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
-          Copy-Item -Path README.md,INSTALL.md,LICENSE,PRIVACY.md,THIRD-PARTY-NOTICES.txt -Destination $stageDir -Force
+          Copy-Item -Path README.md,INSTALL.md,LICENSE,PRIVACY.md -Destination $stageDir -Force
+          Copy-Item -Path docs\legal\THIRD-PARTY-NOTICES.txt -Destination (Join-Path $stageDir 'THIRD-PARTY-NOTICES.txt') -Force
           New-Item -ItemType Directory -Path (Join-Path $stageDir 'scripts') -Force | Out-Null
           Copy-Item -Path scripts\uninstall.ps1 -Destination (Join-Path $stageDir 'scripts\uninstall.ps1') -Force
 

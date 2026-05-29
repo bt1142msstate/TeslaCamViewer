@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/bt1142msstate/TeslaCamViewer/blob/main/INSTALL.md
     about: Read the preview install, manual install, and uninstall instructions.
   - name: Roadmap
-    url: https://github.com/bt1142msstate/TeslaCamViewer/blob/main/ROADMAP.md
+    url: https://github.com/bt1142msstate/TeslaCamViewer/blob/main/docs/project/ROADMAP.md
     about: Review planned Windows, branding, visual context, and macOS work.

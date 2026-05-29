@@ -24,11 +24,11 @@ Verified on May 29, 2026:
 
 The repository contains:
 
-- `Package.appxmanifest`
-- package logo PNG assets in `Assets/`
+- `src/TeslaCamViewer/Package.appxmanifest`
+- package logo PNG assets in `src/TeslaCamViewer/Assets/`
 - GitHub Release packaging workflow and PowerShell install/uninstall scripts
-- `Properties/launchSettings.json` with an MSIX launch profile
-- package metadata in `TeslaCamViewer.csproj`
+- `src/TeslaCamViewer/Properties/launchSettings.json` with an MSIX launch profile
+- package metadata in `src/TeslaCamViewer/TeslaCamViewer.csproj`
 - privacy, roadmap, architecture, third-party notices, and license files
 
 ## Store Requirements From Microsoft Guidance
@@ -53,7 +53,7 @@ Sources:
 
 - Choose and reserve the final app name in Partner Center.
 - Choose the final logo and production icon set for the published app.
-- Replace `Package.appxmanifest` identity values with Partner Center identity values.
+- Replace `src/TeslaCamViewer/Package.appxmanifest` identity values with Partner Center identity values.
 - Build the Store upload package with Partner Center identity selected.
 - Run Windows App Certification Kit again against the final Partner Center/Store identity package and save the report.
 - Add code signing for non-Store GitHub release packages.
@@ -82,19 +82,19 @@ Sources:
 ## Known Packaging Concerns
 
 - The app currently bundles FFmpeg and a cleanup helper executable. Microsoft's single-project MSIX documentation notes limitations around packages with multiple executables. If Store MSIX packaging rejects this layout, use a Windows Application Packaging Project or adjust packaged builds to omit helper executables.
-- The current `Package.appxmanifest` contains placeholder identity values. Partner Center values are authoritative.
+- The current `src/TeslaCamViewer/Package.appxmanifest` contains placeholder identity values. Partner Center values are authoritative.
 - The current PNG assets are generated from the app icon and are acceptable for packaging tests, but should be replaced with final Store-quality artwork.
 
 ## Suggested Pre-Submission Command Checks
 
 ```powershell
-& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' TeslaCamViewer.csproj /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
+& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' src\TeslaCamViewer\TeslaCamViewer.csproj /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
 ```
 
 Unsigned local MSIX package check:
 
 ```powershell
-& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' TeslaCamViewer.csproj /t:Build /p:Configuration=Release /p:Platform=x64 /p:WindowsPackageType=MSIX /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false /v:minimal
+& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' src\TeslaCamViewer\TeslaCamViewer.csproj /t:Build /p:Configuration=Release /p:Platform=x64 /p:WindowsPackageType=MSIX /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false /v:minimal
 ```
 
 Package validation should be run from Visual Studio's packaging flow or MSBuild once the final Store packaging route is chosen.

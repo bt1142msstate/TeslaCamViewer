@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Assets/AppIcon.svg" width="86" alt="TESLA Cam app icon">
+  <img src="src/TeslaCamViewer/Assets/AppIcon.svg" width="86" alt="TESLA Cam app icon">
   <h1>TESLA Cam</h1>
   <p><strong>Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry, markers, and export.</strong></p>
   <p>
@@ -92,13 +92,22 @@ for preview install, manual install, stable-only install, and uninstall details.
 
 ## Build
 
-Open the project in Visual Studio 2026 or newer with the Windows App SDK workload installed, then build `TeslaCamViewer.csproj` for `x64`.
+Open the project in Visual Studio 2026 or newer with the Windows App SDK workload installed, then build `src/TeslaCamViewer/TeslaCamViewer.csproj` for `x64`.
 
 Command-line build used during development:
 
 ```powershell
-& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' TeslaCamViewer.csproj /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
+& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe' src\TeslaCamViewer\TeslaCamViewer.csproj /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
 ```
+
+## Repository Layout
+
+- `src/TeslaCamViewer/` - WinUI 3 desktop app, package assets, manifests, and bundled runtime tool metadata.
+- `src/TeslaCamViewer.Cleanup/` - background cleanup helper used after app exit.
+- `docs/` - GitHub Pages site, public screenshots, project docs, and legal notices.
+- `scripts/` - install and uninstall scripts used by GitHub Releases.
+- `packaging/` - future package manager manifests and packaging notes.
+- `.github/` - issue templates and GitHub Actions workflows.
 
 ## Microsoft Store Plan
 
@@ -110,11 +119,11 @@ faster and more accurate cloud-assisted visual context using Gemini, plus Tesla
 API powered features. Donations may also be offered for people who want to
 support development and upkeep.
 
-See [STORE_READINESS.md](STORE_READINESS.md) for the current packaging and certification checklist.
+See [STORE_READINESS.md](docs/project/STORE_READINESS.md) for the current packaging and certification checklist.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md).
+See [ROADMAP.md](docs/project/ROADMAP.md).
 
 ## Contributing
 
@@ -124,7 +133,7 @@ comfortable making it public.
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md).
+See [ARCHITECTURE.md](docs/project/ARCHITECTURE.md).
 
 ## Privacy
 

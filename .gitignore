@@ -40,8 +40,8 @@ export_*.png
 *.appxbundle
 *.appxupload
 
-# Vendored FFmpeg binaries are not committed. Use Tools/ffmpeg/README.md.
-Tools/ffmpeg/bin/
+# Vendored FFmpeg binaries are not committed. Use src/TeslaCamViewer/Tools/ffmpeg/README.md.
+src/TeslaCamViewer/Tools/ffmpeg/bin/
 
 # IDE/user state
 .vs/

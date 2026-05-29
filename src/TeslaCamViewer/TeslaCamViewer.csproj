@@ -30,8 +30,7 @@
 
   <ItemGroup>
     <Manifest Include="app.manifest" />
-    <Compile Remove="TeslaCamViewer.Cleanup\**\*.cs" />
-    <None Include="LICENSE" Pack="true" PackagePath="" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
   </ItemGroup>
 
   <ItemGroup>
@@ -46,20 +45,21 @@
     <Content Include="Tools\ffmpeg\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="THIRD-PARTY-NOTICES.txt">
+    <Content Include="..\..\docs\legal\THIRD-PARTY-NOTICES.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>THIRD-PARTY-NOTICES.txt</TargetPath>
     </Content>
   </ItemGroup>
 
   <Target Name="BuildCleanupHelper" BeforeTargets="Build">
-    <MSBuild Projects="TeslaCamViewer.Cleanup\TeslaCamViewer.Cleanup.csproj"
+    <MSBuild Projects="..\TeslaCamViewer.Cleanup\TeslaCamViewer.Cleanup.csproj"
              Targets="Restore;Build"
              Properties="Configuration=$(Configuration);Platform=x64;RuntimeIdentifier=win-x64" />
   </Target>
 
   <Target Name="CopyCleanupHelper" AfterTargets="Build">
     <ItemGroup>
-      <CleanupHelperFiles Include="TeslaCamViewer.Cleanup\bin\x64\$(Configuration)\net8.0\win-x64\**\*" />
+      <CleanupHelperFiles Include="..\TeslaCamViewer.Cleanup\bin\x64\$(Configuration)\net8.0\win-x64\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(CleanupHelperFiles)"
           DestinationFiles="@(CleanupHelperFiles->'$(OutDir)Tools\cleanup\%(RecursiveDir)%(Filename)%(Extension)')"
