@@ -32,6 +32,22 @@ published app once the final name, logo, screenshots, and privacy URL are ready.
 - Default local developer build is unpackaged.
 - Microsoft Store packaging is planned through MSIX.
 
+## Install From GitHub
+
+Users do not need Visual Studio to try a published GitHub release. Run this in
+PowerShell:
+
+```powershell
+$installer = Join-Path $env:TEMP 'teslacam-install.ps1'
+Invoke-WebRequest 'https://raw.githubusercontent.com/bt1142msstate/TeslaCamViewer/main/scripts/install.ps1' -OutFile $installer
+powershell -ExecutionPolicy Bypass -File $installer
+```
+
+This installs the latest non-draft GitHub release to
+`%LOCALAPPDATA%\Programs\TESLA Cam` and creates app shortcuts. See
+[INSTALL.md](INSTALL.md) for manual install, stable-only install, and uninstall
+details.
+
 ## Build
 
 Open the project in Visual Studio 2026 or newer with the Windows App SDK workload installed, then build `TeslaCamViewer.csproj` for `x64`.

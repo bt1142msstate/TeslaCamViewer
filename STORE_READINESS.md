@@ -21,6 +21,7 @@ The repository contains:
 
 - `Package.appxmanifest`
 - package logo PNG assets in `Assets/`
+- GitHub Release packaging workflow and PowerShell install/uninstall scripts
 - `Properties/launchSettings.json` with an MSIX launch profile
 - package metadata in `TeslaCamViewer.csproj`
 - privacy, roadmap, architecture, third-party notices, and license files
@@ -55,6 +56,8 @@ Sources:
   - Store-distributed Win32 installer if MSIX packaging is not practical.
 - Produce final Store artwork, screenshots, and promotional images.
 - Publish the app's GitHub Pages site or another stable public product site.
+- Keep GitHub Releases available as an interim no-Visual-Studio install path
+  until Store distribution is ready.
 - Produce Store listing copy, category, keywords, age rating, and support contact.
 - Publish a stable privacy policy URL.
 - Confirm FFmpeg LGPL notice and binary distribution are acceptable for the chosen package route.

@@ -5,6 +5,8 @@ This roadmap describes intended product direction. It is not a promise that ever
 ## Near Term
 
 - Finish Microsoft Store packaging validation.
+- Publish GitHub Releases with a portable Windows build and PowerShell installer
+  for users who do not have Visual Studio.
 - Add a first-run privacy and local-media explanation.
 - Improve archive import handling for more ZIP layouts.
 - Add stronger export progress reporting for multi-view exports.
