@@ -58,7 +58,8 @@ Sources:
   - MSIX package with a packaging project if bundled helper executables require it.
   - Store-distributed Win32 installer if MSIX packaging is not practical.
 - Produce final Store artwork, screenshots, and promotional images.
-- Publish the app's GitHub Pages site or another stable public product site.
+- Keep the GitHub Pages site current, then update it with final branding and
+  Store links after publication.
 - Keep GitHub Releases available as an interim no-Visual-Studio install path
   until Store distribution is ready.
 - Produce Store listing copy, category, keywords, age rating, and support contact.

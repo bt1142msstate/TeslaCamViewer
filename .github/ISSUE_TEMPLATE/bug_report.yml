@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible problem in playback, scanning, telemetry, export, or install.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach private footage, GPS traces, faces, license plates, or other sensitive media unless you are comfortable making it public.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Playback and stitching
+        - Telemetry sync
+        - Clip scanning or drive detection
+        - Export
+        - Install or packaging
+        - UI or visual design
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+      placeholder: v0.1.0-preview.1 or commit SHA
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source type
+      options:
+        - Mounted TeslaCam drive
+        - Copied TeslaCam folder
+        - ZIP archive
+        - Exported all-views ZIP
+        - Other
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact actions that trigger the problem.
+      placeholder: "1. Open ...\n2. Select ...\n3. Scrub/export/play ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Attach non-sensitive screenshots or relevant `crash.txt` lines if available.

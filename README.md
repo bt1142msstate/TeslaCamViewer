@@ -1,4 +1,17 @@
-# TESLA Cam
+<div align="center">
+  <img src="Assets/AppIcon.svg" width="86" alt="TESLA Cam app icon">
+  <h1>TESLA Cam</h1>
+  <p><strong>Source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry, markers, and export.</strong></p>
+  <p>
+    <a href="https://github.com/bt1142msstate/TeslaCamViewer/actions/workflows/windows-build.yml"><img alt="Windows Build" src="https://img.shields.io/github/actions/workflow/status/bt1142msstate/TeslaCamViewer/windows-build.yml?branch=main&label=windows%20build"></a>
+    <a href="https://github.com/bt1142msstate/TeslaCamViewer/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/bt1142msstate/TeslaCamViewer?include_prereleases&label=release"></a>
+    <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%2010%2B-0078D4">
+    <img alt="Built with WinUI 3" src="https://img.shields.io/badge/UI-WinUI%203-5AC8FA">
+    <img alt="License" src="https://img.shields.io/badge/license-source--available-informational">
+  </p>
+</div>
+
+![TESLA Cam playback dashboard with stitched TeslaCam cameras and telemetry](docs/screenshots/app-playback-dashboard.png)
 
 TESLA Cam is a Windows desktop viewer for TeslaCam footage. It is built with WinUI 3 and Windows App SDK, and focuses on turning Tesla's split camera files into a drive-centered viewing experience.
 
@@ -6,8 +19,23 @@ This project is not affiliated with, endorsed by, or sponsored by Tesla, Inc. Te
 
 The public repository uses a working project name. The published app is planned
 to ship under a different final name, and a macOS version is planned after the
-Windows app is further along. A public GitHub Pages site is planned for the
-published app once the final name, logo, screenshots, and privacy URL are ready.
+Windows app is further along. A public GitHub Pages preview site is available at
+https://bt1142msstate.github.io/TeslaCamViewer/ and should be refreshed once the
+final name, logo, screenshots, and privacy URL are ready.
+
+## Screenshots
+
+![TESLA Cam drive scan and clip list](docs/screenshots/app-drive-overview.png)
+
+## Categories And Tags
+
+Categories: TeslaCam viewer, dashcam footage review, multi-camera video player,
+vehicle telemetry, Windows desktop app, video stitching, clip export, marker
+based editing, Sentry Mode review.
+
+Tags: `teslacam`, `tesla-dashcam`, `dashcam-viewer`, `winui3`,
+`windows-app-sdk`, `dotnet`, `ffmpeg`, `mp4`, `telemetry`, `video-stitching`,
+`video-export`, `sentry-mode`, `source-available`, `github-releases`, `winget`.
 
 ## Current Features
 
@@ -72,6 +100,12 @@ See [STORE_READINESS.md](STORE_READINESS.md) for the current packaging and certi
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Do not attach private TeslaCam footage,
+GPS traces, faces, license plates, or other sensitive media unless you are
+comfortable making it public.
 
 ## Architecture
 

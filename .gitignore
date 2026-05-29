@@ -25,6 +25,11 @@ steering_wheel_*.png
 directory_*.png
 export_*.png
 
+# Public documentation screenshots
+!docs/
+!docs/screenshots/
+!docs/screenshots/*.png
+
 # User media and generated exports
 *.mp4
 *.zip

@@ -54,9 +54,9 @@ The subscription path must be opt-in and clearly explain what data is sent outsi
   telemetry without implying Tesla affiliation or ownership of Tesla marks.
 - Replace the current working icon assets with production-ready Windows Store
   artwork once the final name and logo are chosen.
-- Create a GitHub Pages site for the app with screenshots, feature overview,
-  download/store links, source-available license summary, privacy policy, and
-  roadmap links.
+- Maintain the GitHub Pages site with screenshots, feature overview,
+  download/store links, source-available license summary, privacy policy,
+  roadmap links, and final branding when the published name is chosen.
 
 ## Tesla API
 

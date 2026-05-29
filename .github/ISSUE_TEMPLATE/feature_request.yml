@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a focused improvement for TESLA Cam.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Playback and stitching
+        - Telemetry
+        - Clip organization
+        - Markers and export
+        - Install or packaging
+        - Design and accessibility
+        - macOS
+        - Visual context
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What are you trying to do, and what currently gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior, controls, or output you expect.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional, but useful for packaging, export, and UI requests.
