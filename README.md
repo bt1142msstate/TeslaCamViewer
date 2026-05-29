@@ -78,9 +78,14 @@ and Windows Package Manager manifest are ready:
 winget install --id BrandonTemple.FinalAppName -e
 ```
 
-Until that package exists, download `Install-TESLA-Cam.ps1` from the
-[latest GitHub Release](https://github.com/bt1142msstate/TeslaCamViewer/releases)
-and run it in PowerShell. It installs the selected non-draft release to
+Until that package exists, the preview site links directly to the current
+GitHub Release assets:
+
+- [Download Windows portable ZIP](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/TESLA-Cam-win-x64-portable.zip)
+- [Download PowerShell installer script](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/Install-TESLA-Cam.ps1)
+- [View checksums](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/SHA256SUMS.txt)
+
+The installer script installs the selected non-draft release to
 `%LOCALAPPDATA%\Programs\TESLA Cam`, verifies the package SHA-256 when GitHub
 provides an asset digest, and creates app shortcuts. See [INSTALL.md](INSTALL.md)
 for preview install, manual install, stable-only install, and uninstall details.

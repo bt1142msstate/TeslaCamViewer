@@ -33,7 +33,7 @@
       "url": "https://brandontemple.com/"
     },
     "codeRepository": "https://github.com/bt1142msstate/TeslaCamViewer",
-    "downloadUrl": "https://github.com/bt1142msstate/TeslaCamViewer/releases",
+    "downloadUrl": "https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/TESLA-Cam-win-x64-portable.zip",
     "license": "https://github.com/bt1142msstate/TeslaCamViewer/blob/main/LICENSE",
     "image": "https://bt1142msstate.github.io/TeslaCamViewer/screenshots/app-playback-dashboard.png",
     "offers": {
@@ -718,9 +718,9 @@
       <h1>TESLA Cam</h1>
       <p class="tagline">Review a full drive as one continuous multi-camera session with synchronized playback, embedded telemetry, marker-based export, and a free core app that does not watermark your exports.</p>
       <div class="hero-actions">
-        <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases">Download preview</a>
+        <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/TESLA-Cam-win-x64-portable.zip">Download Windows ZIP</a>
+        <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/Install-TESLA-Cam.ps1">Installer script</a>
         <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/INSTALL.md">Install notes</a>
-        <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer">View source</a>
       </div>
       <div class="hero-meta" aria-label="Project highlights">
         <div class="metric">
@@ -808,17 +808,27 @@
 
     <section class="section" id="install">
       <div class="section-heading">
-        <h2>Install Without Visual Studio</h2>
-        <p>Preview builds are published through GitHub Releases. WinGet is the planned modern command-line path after final naming, signing, and package identity are ready.</p>
+        <h2>Direct Download</h2>
+        <p>Download the current Windows preview directly from this page. No Visual Studio is required. WinGet remains the planned command-line path after final naming, signing, and package identity are ready.</p>
       </div>
       <div class="install-layout">
         <article class="install-panel">
-          <span class="pill">Preview</span>
-          <h3>GitHub Release Installer</h3>
-          <p class="muted">Download <strong>Install-TESLA-Cam.ps1</strong> from the latest release, then install a specific preview build.</p>
-          <code class="command">powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1 -ReleaseTag v0.1.0-preview.1</code>
+          <span class="pill">Preview v0.1.0</span>
+          <h3>Windows Portable ZIP</h3>
+          <p class="muted">Download the x64 portable package, extract it anywhere under your user profile, and run <strong>TeslaCamViewer.exe</strong>.</p>
           <div class="button-row">
-            <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases">Open releases</a>
+            <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/TESLA-Cam-win-x64-portable.zip">Download ZIP</a>
+            <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/SHA256SUMS.txt">SHA-256</a>
+            <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/tag/v0.1.0-preview.1">Release notes</a>
+          </div>
+        </article>
+        <article class="install-panel">
+          <span class="pill">Shortcuts</span>
+          <h3>PowerShell Installer</h3>
+          <p class="muted">Download the installer script if you want it to fetch the ZIP, verify the checksum, install to local app data, and create shortcuts.</p>
+          <code class="command">powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1</code>
+          <div class="button-row">
+            <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.1/Install-TESLA-Cam.ps1">Download script</a>
             <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/INSTALL.md">Read install docs</a>
           </div>
         </article>
