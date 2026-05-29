@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">TeslaCam Viewer Icon</title>
+  <desc id="desc">Red Tesla logo with a recording indicator over the top-right.</desc>
+  <defs>
+    <linearGradient id="panel" x1="26" y1="18" x2="230" y2="238" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#151923"/>
+      <stop offset="1" stop-color="#05070b"/>
+    </linearGradient>
+    <linearGradient id="record" x1="164" y1="32" x2="226" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff3359"/>
+      <stop offset="1" stop-color="#b80027"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000000" flood-opacity=".5"/>
+    </filter>
+  </defs>
+
+  <rect x="14" y="14" width="228" height="228" rx="48" fill="url(#panel)"/>
+  <rect x="16" y="16" width="224" height="224" rx="46" fill="none" stroke="#283243" stroke-width="3"/>
+
+  <g filter="url(#shadow)" transform="translate(128 142) scale(.32) translate(-545.8 -590)">
+    <path fill="#e82127" d="m545.8 845.8 71.9-404.6c68.6 0 90.2 7.5 93.3 38.2 0 0 46-17.2 69.2-52-90.5-41.9-181.5-43.8-181.5-43.8l-53.1 64.6h.1l-53.1-64.6s-91 1.9-181.5 43.8c23.2 34.8 69.2 52 69.2 52 3.1-30.7 24.7-38.2 92.8-38.3l72.7 404.7m0-480.9c73.2-.6 156.9 11.3 242.7 48.7 11.5-20.6 14.4-29.7 14.4-29.7-93.7-37.1-181.5-49.8-257.1-50.1-75.6.3-163.4 13-257.1 50.1 0 0 4.2 11.2 14.4 29.7 85.7-37.3 169.5-49.2 242.7-48.7"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <circle cx="190" cy="64" r="34" fill="#07090d" stroke="#f6f8fb" stroke-width="5"/>
+    <circle cx="190" cy="64" r="24" fill="url(#record)"/>
+    <circle cx="190" cy="64" r="9" fill="#fff3f6"/>
+  </g>
+</svg>

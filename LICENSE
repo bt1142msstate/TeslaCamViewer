@@ -1,0 +1,44 @@
+TESLA Cam Source-Available Personal Use License
+
+Copyright (c) 2026 Brandon Temple. All rights reserved.
+
+This software is source-available. Permission is granted to view, clone,
+build, run, and modify this source code only for personal, non-commercial use.
+
+You may:
+
+- inspect the source code;
+- build and run the software for personal use;
+- modify the software for your own personal use;
+- use normal GitHub viewing, cloning, and forking features for personal
+  evaluation or customization.
+
+You may not, without prior written permission from Brandon Temple:
+
+- sell, rent, lease, sublicense, or commercially exploit the software or any
+  modified version;
+- redistribute, publish, share, or make available source code, binaries,
+  installers, packages, forks, or modified versions except as allowed above for
+  personal GitHub use;
+- publish or distribute the software or a derivative application under your own
+  name, brand, product, or service;
+- remove, obscure, or alter copyright, license, trademark, or attribution
+  notices;
+- use the project's name, branding, icons, or visual identity in another
+  product;
+- use the software in a way that violates law or third-party rights.
+
+Contributions submitted to this project may be used, modified, and distributed
+by Brandon Temple as part of this project and future versions of the app unless
+another written agreement is made before submission.
+
+This license does not grant trademark rights. Tesla and related marks are
+trademarks of Tesla, Inc. This project is not affiliated with, endorsed by, or
+sponsored by Tesla, Inc.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

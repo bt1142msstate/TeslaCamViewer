@@ -1,0 +1,49 @@
+# Build output
+bin/
+obj/
+App/
+TestResults/
+
+# Local runtime output
+crash.txt
+*.log
+store_certification_report*.xml
+last_*_start.txt
+
+# Local validation screenshots and crops
+app_screenshot*.png
+*_test.png
+*_crop.png
+*_crop2.png
+*_crop3.png
+*_crop4.png
+*_zoom.png
+main_video_corner*.png
+marker_test_screen.png
+source_picker_*.png
+steering_wheel_*.png
+directory_*.png
+export_*.png
+
+# User media and generated exports
+*.mp4
+*.zip
+*.msix
+*.msixbundle
+*.msixupload
+*.appx
+*.appxbundle
+*.appxupload
+
+# Vendored FFmpeg binaries are not committed. Use Tools/ffmpeg/README.md.
+Tools/ffmpeg/bin/
+
+# IDE/user state
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS files
+Thumbs.db
+Desktop.ini

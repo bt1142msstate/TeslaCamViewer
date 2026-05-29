@@ -1,0 +1,42 @@
+using Microsoft.UI.Xaml;
+using System;
+using System.Threading.Tasks;
+
+namespace TeslaCamViewer
+{
+    public partial class App : Application
+    {
+        private Window m_window;
+
+        public App()
+        {
+            this.InitializeComponent();
+            this.UnhandledException += App_UnhandledException;
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+            TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+        }
+
+        private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+        {
+            CrashLogger.Log("WinUI unhandled exception", e.Exception);
+            e.Handled = true;
+        }
+
+        private void CurrentDomain_UnhandledException(object sender, System.UnhandledExceptionEventArgs e)
+        {
+            CrashLogger.Log("AppDomain unhandled exception", e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString() ?? "Unknown fatal exception"));
+        }
+
+        private void TaskScheduler_UnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
+        {
+            CrashLogger.Log("Unobserved task exception", e.Exception);
+            e.SetObserved();
+        }
+
+        protected override void OnLaunched(LaunchActivatedEventArgs args)
+        {
+            m_window = new MainWindow();
+            m_window.Activate();
+        }
+    }
+}

@@ -1,0 +1,10 @@
+TeslaCamViewer Third-Party Notices
+
+FFmpeg
+Source: https://github.com/BtbN/FFmpeg-Builds
+Build: win64 LGPL shared autobuild
+License: GNU Lesser General Public License, included at Tools/ffmpeg/LICENSE-FFmpeg-BtbN.txt
+
+The app launches the bundled ffmpeg.exe as a separate process for lossless
+stream-copy concatenation of TeslaCam segments. FFmpeg binaries and libraries
+are distributed unmodified from the referenced LGPL shared build.

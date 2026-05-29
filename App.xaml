@@ -1,0 +1,65 @@
+<Application
+    x:Class="TeslaCamViewer.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TeslaCamViewer">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+            <AcrylicBrush x:Key="GlassSidebarBrush" TintColor="#060A12" TintOpacity="0.34" TintLuminosityOpacity="0.10" FallbackColor="#78060A12"/>
+            <AcrylicBrush x:Key="GlassSidebarCardBrush" TintColor="#FFFFFF" TintOpacity="0.045" TintLuminosityOpacity="0.12" FallbackColor="#18FFFFFF"/>
+            <AcrylicBrush x:Key="GlassSidebarInputBrush" TintColor="#FFFFFF" TintOpacity="0.04" TintLuminosityOpacity="0.10" FallbackColor="#14FFFFFF"/>
+            <AcrylicBrush x:Key="GlassPanelBrush" TintColor="#0B1220" TintOpacity="0.28" TintLuminosityOpacity="0.06" FallbackColor="#700B1220"/>
+            <AcrylicBrush x:Key="GlassPanelStrongBrush" TintColor="#FFFFFF" TintOpacity="0.12" TintLuminosityOpacity="0.24" FallbackColor="#42FFFFFF"/>
+            <AcrylicBrush x:Key="GlassCardBrush" TintColor="#0B1220" TintOpacity="0.24" TintLuminosityOpacity="0.06" FallbackColor="#5C0B1220"/>
+            <AcrylicBrush x:Key="GlassInputBrush" TintColor="#FFFFFF" TintOpacity="0.04" TintLuminosityOpacity="0.10" FallbackColor="#16FFFFFF"/>
+            <AcrylicBrush x:Key="GlassControlBrush" TintColor="#FFFFFF" TintOpacity="0.045" TintLuminosityOpacity="0.12" FallbackColor="#1AFFFFFF"/>
+            <AcrylicBrush x:Key="GlassLabelBrush" TintColor="#060A12" TintOpacity="0.42" TintLuminosityOpacity="0.06" FallbackColor="#96060A12"/>
+            <AcrylicBrush x:Key="LiquidThumbGlassBrush" TintColor="#FFFFFF" TintOpacity="0.18" TintLuminosityOpacity="0.46" FallbackColor="#66FFFFFF"/>
+            <SolidColorBrush x:Key="LiquidThumbRimBrush" Color="#CCFFFFFF"/>
+            <SolidColorBrush x:Key="GlassRailBrush" Color="#36FFFFFF"/>
+            <SolidColorBrush x:Key="GlassBorderBrush" Color="#3FFFFFFF"/>
+            <SolidColorBrush x:Key="GlassBorderSoftBrush" Color="#24FFFFFF"/>
+            <SolidColorBrush x:Key="VideoCornerMaskBrush" Color="#FF111827"/>
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#2CFFFFFF"/>
+            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#3EFFFFFF"/>
+            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#7FFFFFFF"/>
+            <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#A0FFFFFF"/>
+            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#24FFFFFF"/>
+            <SolidColorBrush x:Key="ToggleButtonBackgroundPressed" Color="#34FFFFFF"/>
+            <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#332A9DF4"/>
+            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#4A5AC8FA"/>
+            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#665AC8FA"/>
+            <SolidColorBrush x:Key="ToggleButtonBorderBrushPointerOver" Color="#5CFFFFFF"/>
+            <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#7A5AC8FA"/>
+            <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="#B05AC8FA"/>
+            <SolidColorBrush x:Key="ToggleButtonForegroundPointerOver" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#2CFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="#3EFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#7FFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#A0FFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxForegroundPointerOver" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxForegroundPressed" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="#24FFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#365AC8FA"/>
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F8FAFC"/>
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#CBD5E1"/>
+            <SolidColorBrush x:Key="TextMutedBrush" Color="#8D99A8"/>
+            <SolidColorBrush x:Key="SidebarTextPrimaryBrush" Color="#F8FAFC"/>
+            <SolidColorBrush x:Key="SidebarTextSecondaryBrush" Color="#CBD5E1"/>
+            <SolidColorBrush x:Key="SidebarTextMutedBrush" Color="#94A3B8"/>
+            <SolidColorBrush x:Key="SidebarAccentBrush" Color="#7CC7FF"/>
+            <SolidColorBrush x:Key="AccentCyanBrush" Color="#5AC8FA"/>
+            <SolidColorBrush x:Key="AccentCyanStrongBrush" Color="#0A84FF"/>
+            <SolidColorBrush x:Key="AccentRedBrush" Color="#FF453A"/>
+            <SolidColorBrush x:Key="AccentGreenBrush" Color="#30D158"/>
+            <SolidColorBrush x:Key="GlassDarkBrush" Color="#B8050810"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
