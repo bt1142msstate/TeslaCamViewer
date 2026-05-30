@@ -37,8 +37,29 @@ namespace TeslaCamViewer
 
         protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
-            m_window = new MainWindow();
+            m_window = new MainWindow(GetStartupSourcePath());
             m_window.Activate();
+        }
+
+        private static string GetStartupSourcePath()
+        {
+            string[] args = Environment.GetCommandLineArgs();
+            for (int i = 1; i < args.Length; i++)
+            {
+                string arg = args[i];
+                if (string.Equals(arg, "--source", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                {
+                    return args[i + 1];
+                }
+
+                const string sourcePrefix = "--source=";
+                if (arg.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return arg.Substring(sourcePrefix.Length).Trim('"');
+                }
+            }
+
+            return null;
         }
     }
 }

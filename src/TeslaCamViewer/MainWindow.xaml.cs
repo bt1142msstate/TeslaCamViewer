@@ -138,7 +138,7 @@ namespace TeslaCamViewer
         [DllImport("user32.dll")]
         private static extern IntPtr SetCursor(IntPtr hCursor);
 
-        public MainWindow()
+        public MainWindow(string initialSourcePath = null)
         {
             this.InitializeComponent();
             Closed += MainWindow_Closed;
@@ -220,8 +220,16 @@ namespace TeslaCamViewer
             ResetCameraLayout();
             QueueUpdateCheck();
 
-            // Auto-detect TeslaCam folder on launch
-            AutoDetectTeslaCam(initialScan: true);
+            if (!string.IsNullOrWhiteSpace(initialSourcePath))
+            {
+                DirTextBox.Text = initialSourcePath;
+                TriggerScan(initialSourcePath);
+            }
+            else
+            {
+                // Auto-detect TeslaCam folder on launch
+                AutoDetectTeslaCam(initialScan: true);
+            }
         }
 
         private void MainWindow_Closed(object sender, WindowEventArgs args)
@@ -2775,63 +2783,6 @@ namespace TeslaCamViewer
             }
         }
 
-        private void QueueVirtualStitchCache(TeslaClip clip, List<TeslaClipSegment> sortedSegments, int clipVersion, CancellationToken cancellationToken)
-        {
-            if (sortedSegments == null || sortedSegments.Count <= 1 || cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
-            string ffmpegPath = FindFfmpegExecutable();
-            if (string.IsNullOrWhiteSpace(ffmpegPath))
-            {
-                CrashLogger.LogMessage("Stitch cache", "Bundled ffmpeg.exe was not found. Virtual playback will continue without a stitched cache.");
-                return;
-            }
-
-            SetStitchActivity(true, "Caching seamless drive...");
-
-            _ = Task.Run(async () =>
-            {
-                bool cacheReady = false;
-                try
-                {
-                    await Task.Delay(2000, cancellationToken);
-                    TeslaClipSegment stitchedSegment = BuildStitchedPlaybackSegment(clip, sortedSegments, ffmpegPath, cancellationToken);
-                    cacheReady = stitchedSegment?.Cameras != null && stitchedSegment.Cameras.ContainsKey("front");
-                }
-                catch (OperationCanceledException)
-                {
-                }
-                catch (Exception ex)
-                {
-                    if (!_isWindowClosing)
-                    {
-                        CrashLogger.Log("Queue virtual stitch cache", ex);
-                    }
-                }
-                finally
-                {
-                    DispatcherQueue?.TryEnqueue(() =>
-                    {
-                        if (_isWindowClosing ||
-                            cancellationToken.IsCancellationRequested ||
-                            clipVersion != _clipSelectionVersion ||
-                            _activeClip != clip)
-                        {
-                            return;
-                        }
-
-                        SetStitchActivity(false);
-                        if (cacheReady)
-                        {
-                            SetAppStatus("Seamless drive cached", false);
-                        }
-                    });
-                }
-            }, cancellationToken);
-        }
-
         private void PromoteStitchedPlayback(TeslaClip clip, TeslaClipSegment stitchedSegment, int clipVersion, CancellationToken cancellationToken)
         {
             if (_isWindowClosing ||
@@ -3569,11 +3520,6 @@ namespace TeslaCamViewer
                 _activePlaybackSegments = playbackSegments;
                 InitializeClipTimeline(playbackSegments);
                 QueueManualDrivingRangesForClip(clip, playbackSegments, clipVersion, markerToken);
-
-                if (needsStitchedPlayback && stitchedPlaybackSegment == null)
-                {
-                    QueueVirtualStitchCache(clip, sortedSegments, clipVersion, stitchToken);
-                }
 
                 if (playbackSegments.Count > 0)
                 {
