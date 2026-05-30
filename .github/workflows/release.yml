@@ -152,7 +152,7 @@ jobs:
           @"
           TESLA Cam preview installer.
 
-          This setup installs the local-first Windows viewer with fast virtual stitched playback, creates shortcuts, and launches the app.
+          This setup installs the local-first Windows viewer with fast prefetched virtual stitched playback, creates shortcuts, and launches the app.
           "@ | Set-Content -Path $notesPath -Encoding UTF8
 
           Remove-Item -Path $installerOutputDir -Recurse -Force -ErrorAction SilentlyContinue

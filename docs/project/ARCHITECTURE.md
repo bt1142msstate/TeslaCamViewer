@@ -84,13 +84,13 @@ Responsibilities:
 - Represent a drive or event clip.
 - Track camera paths by camera role.
 - Estimate segment durations before media players report exact durations.
-- Maintain the active virtual playback segment list and exact per-camera timeline.
+- Maintain the active virtual playback segment list, exact per-camera timeline, and prefetched camera playback lists for multi-segment review.
 
 ## Stitching And Cache
 
 Responsibilities:
 
-- Watch-time playback uses the raw segment list plus exact MP4-derived durations; it should not block on FFmpeg concatenation before a drive can be reviewed.
+- Watch-time playback uses the raw segment list, exact MP4-derived durations, and per-camera `MediaPlaybackList` sources; it should not block on FFmpeg concatenation or open the next MP4 only after a segment ends.
 - Use bundled FFmpeg for stream-copy concatenation when exporting or generating explicit stitch artifacts.
 - Cache generated stitch/export artifacts under local app data when they are created.
 - Keep virtual playback as the immediate fallback and primary review path.

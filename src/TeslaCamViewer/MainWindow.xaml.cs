@@ -75,6 +75,14 @@ namespace TeslaCamViewer
         
         // Maps current camera role to the active MediaPlayerElement
         private Dictionary<string, MediaPlayerElement> _auxPlayers = new Dictionary<string, MediaPlayerElement>();
+        private readonly Dictionary<MediaPlayerElement, MediaPlaybackList> _activePlaybackLists = new Dictionary<MediaPlayerElement, MediaPlaybackList>();
+        private readonly Dictionary<MediaPlaybackItem, int> _mainPlaybackItemSegmentIndexes = new Dictionary<MediaPlaybackItem, int>();
+        private MediaPlaybackList _mainPlaybackList;
+        private bool _isUsingPlaybackList = false;
+        private bool _isInitializingPlaybackList = false;
+        private readonly bool _playbackDiagnosticsEnabled = string.Equals(Environment.GetEnvironmentVariable("TESLACAM_PLAYBACK_DIAGNOSTICS"), "1", StringComparison.OrdinalIgnoreCase);
+        private long _lastPlaybackListTransitionTicks = 0;
+        private int _lastPlaybackListTransitionSegmentIndex = -1;
         private string _mainAngle = "front"; // tracks which camera angle is on the main player
         
         // Timer for high frequency HUD ticks and player sync
@@ -122,6 +130,8 @@ namespace TeslaCamViewer
         private const int ClipTelemetrySummaryCacheMaxEntries = 5000;
         private const int ClipTelemetrySummaryCacheSaveDelayMs = 1500;
         private const int StitchCacheMaxParallelCameraCopies = 2;
+        private const double PlaybackListPrefetchSeconds = 20.0;
+        private const uint PlaybackListPlayedItemsToKeepOpen = 2;
         private const long StitchCacheMaxBytes = 64L * 1024L * 1024L * 1024L;
         private const long StitchCacheMinFreeBytes = 12L * 1024L * 1024L * 1024L;
         private const string UpdateRepositoryUrl = "https://github.com/bt1142msstate/TeslaCamViewer";
@@ -182,6 +192,11 @@ namespace TeslaCamViewer
                     try
                     {
                         if (_isWindowClosing) return;
+
+                        if (_isUsingPlaybackList && _activePlaybackSegments != null && _activeSegmentIndex < _activePlaybackSegments.Count - 1)
+                        {
+                            return;
+                        }
 
                         if (_activePlaybackSegments != null && _activeSegmentIndex >= 0 && _activeSegmentIndex < _activePlaybackSegments.Count - 1)
                         {
@@ -3494,10 +3509,9 @@ namespace TeslaCamViewer
                 var sortedSegments = clip.Segments.OrderBy(s => s.Timestamp).ToList();
                 clip.Segments = sortedSegments;
 
-                bool needsStitchedPlayback = sortedSegments.Count > 1;
                 TeslaClipSegment stitchedPlaybackSegment = null;
 
-                if (!needsStitchedPlayback)
+                if (sortedSegments.Count > 0)
                 {
                     SetPlaybackActivity(true, "Reading clip timing...");
                     await Task.Run(() => PopulateSegmentExactDurations(sortedSegments, "front"));
@@ -3524,6 +3538,22 @@ namespace TeslaCamViewer
                 if (playbackSegments.Count > 0)
                 {
                     ActiveClipTitle.Text = !string.IsNullOrWhiteSpace(clip.DateText) ? clip.DateText : clip.Title;
+                    if (playbackSegments.Count > 1)
+                    {
+                        bool startedPlaybackList = await TryStartPlaybackListAsync(
+                            clip,
+                            playbackSegments,
+                            keepPlaying,
+                            0.0,
+                            clipVersion,
+                            stitchToken);
+
+                        if (startedPlaybackList)
+                        {
+                            return;
+                        }
+                    }
+
                     SelectClipSegment(playbackSegments[0], wasPlaying: keepPlaying);
                 }
             }
@@ -3548,6 +3578,402 @@ namespace TeslaCamViewer
             }
         }
 
+        private async Task<bool> TryStartPlaybackListAsync(TeslaClip clip, List<TeslaClipSegment> playbackSegments, bool wasPlaying, double globalSeekSeconds, int clipVersion, CancellationToken cancellationToken)
+        {
+            if (clip == null || playbackSegments == null || playbackSegments.Count <= 1)
+            {
+                return false;
+            }
+
+            var loadStopwatch = Stopwatch.StartNew();
+            int loadVersion = ++_segmentLoadVersion;
+            _isLoadingSegment = true;
+            SetPlaybackActivity(true, "Preparing seamless playback...");
+
+            try
+            {
+                if (!SegmentsHaveCamera(playbackSegments, _mainAngle))
+                {
+                    ResetCameraLayout();
+                }
+
+                if (!SegmentsHaveCamera(playbackSegments, _mainAngle))
+                {
+                    return false;
+                }
+
+                Pause();
+                SetPlaybackControlsEnabled(false);
+                ClearAllPlayerSources();
+
+                var target = GetSegmentPositionForGlobalTime(globalSeekSeconds);
+                if (target.SegmentIndex < 0)
+                {
+                    target = (0, 0.0);
+                }
+
+                var mainIndexMap = new Dictionary<MediaPlaybackItem, int>();
+                MediaPlaybackList mainList = await CreatePlaybackListForCameraAsync(playbackSegments, _mainAngle, mainIndexMap, cancellationToken);
+                if (mainList == null ||
+                    _isWindowClosing ||
+                    cancellationToken.IsCancellationRequested ||
+                    clipVersion != _clipSelectionVersion ||
+                    _activeClip != clip ||
+                    loadVersion != _segmentLoadVersion)
+                {
+                    return false;
+                }
+
+                _isUsingPlaybackList = true;
+                _isInitializingPlaybackList = true;
+                _mainPlaybackList = mainList;
+                _mainPlaybackItemSegmentIndexes.Clear();
+                foreach (var pair in mainIndexMap)
+                {
+                    _mainPlaybackItemSegmentIndexes[pair.Key] = pair.Value;
+                }
+
+                _mainPlaybackList.CurrentItemChanged += MainPlaybackList_CurrentItemChanged;
+
+                bool mainLoaded = await SetPlayerPlaybackSourceAsync(MainPlayer, mainList);
+                if (!mainLoaded ||
+                    _isWindowClosing ||
+                    cancellationToken.IsCancellationRequested ||
+                    clipVersion != _clipSelectionVersion ||
+                    _activeClip != clip ||
+                    loadVersion != _segmentLoadVersion)
+                {
+                    return false;
+                }
+
+                _activePlaybackLists[MainPlayer] = mainList;
+                MainAngleLabel.Text = GetFriendlyAngleLabel(_mainAngle);
+                MainAngleLabel.Tag = _mainAngle;
+
+                foreach (var slot in GetAuxSlots())
+                {
+                    if (_isWindowClosing ||
+                        cancellationToken.IsCancellationRequested ||
+                        clipVersion != _clipSelectionVersion ||
+                        _activeClip != clip ||
+                        loadVersion != _segmentLoadVersion)
+                    {
+                        return false;
+                    }
+
+                    string camera = slot.Card.Tag as string;
+                    if (string.IsNullOrWhiteSpace(camera) || !SegmentsHaveCamera(playbackSegments, camera))
+                    {
+                        slot.Player.Visibility = Visibility.Collapsed;
+                        ClearPlayerSource(slot.Player);
+                        continue;
+                    }
+
+                    MediaPlaybackList auxList = await CreatePlaybackListForCameraAsync(playbackSegments, camera, null, cancellationToken);
+                    if (auxList == null)
+                    {
+                        slot.Player.Visibility = Visibility.Collapsed;
+                        ClearPlayerSource(slot.Player);
+                        continue;
+                    }
+
+                    bool auxLoaded = await SetPlayerPlaybackSourceAsync(slot.Player, auxList);
+                    if (!auxLoaded)
+                    {
+                        slot.Player.Visibility = Visibility.Collapsed;
+                        ClearPlayerSource(slot.Player);
+                        continue;
+                    }
+
+                    _activePlaybackLists[slot.Player] = auxList;
+                    slot.Player.Visibility = Visibility.Visible;
+                }
+
+                MovePlaybackListsToSegment(target.SegmentIndex, includeMain: true);
+                SeekAllPlayers(TimeSpan.FromSeconds(target.LocalSeconds));
+                SetActivePlaybackListSegment(target.SegmentIndex, target.LocalSeconds, loadVersion, queueTelemetry: true);
+                SetPlaybackRateForAll(_playbackRate);
+                SetPlaybackControlsEnabled(true);
+                SetAppStatus($"Video ready in {loadStopwatch.Elapsed.TotalSeconds:0.0}s", false);
+                ResetPlaybackListTransitionDiagnostics(target.SegmentIndex);
+                LogPlaybackDiagnostic($"PlaybackListReady segments={playbackSegments.Count} players={_activePlaybackLists.Count} elapsedMs={loadStopwatch.Elapsed.TotalMilliseconds:0}");
+                _isInitializingPlaybackList = false;
+
+                _isLoadingSegment = false;
+                if (wasPlaying)
+                {
+                    Play();
+                }
+
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Start playback list", ex);
+                return false;
+            }
+            finally
+            {
+                _isInitializingPlaybackList = false;
+                if (loadVersion == _segmentLoadVersion)
+                {
+                    _isLoadingSegment = false;
+                    SetPlaybackActivity(false);
+                }
+            }
+        }
+
+        private bool SegmentsHaveCamera(List<TeslaClipSegment> playbackSegments, string camera)
+        {
+            if (playbackSegments == null || playbackSegments.Count == 0 || string.IsNullOrWhiteSpace(camera))
+            {
+                return false;
+            }
+
+            return playbackSegments.All(segment =>
+                segment?.Cameras != null &&
+                segment.Cameras.TryGetValue(camera, out string path) &&
+                !string.IsNullOrWhiteSpace(path) &&
+                File.Exists(path));
+        }
+
+        private async Task<MediaPlaybackList> CreatePlaybackListForCameraAsync(List<TeslaClipSegment> playbackSegments, string camera, Dictionary<MediaPlaybackItem, int> indexMap, CancellationToken cancellationToken)
+        {
+            if (!SegmentsHaveCamera(playbackSegments, camera))
+            {
+                return null;
+            }
+
+            var list = new MediaPlaybackList
+            {
+                AutoRepeatEnabled = false,
+                ShuffleEnabled = false,
+                MaxPrefetchTime = TimeSpan.FromSeconds(PlaybackListPrefetchSeconds),
+                MaxPlayedItemsToKeepOpen = PlaybackListPlayedItemsToKeepOpen
+            };
+
+            for (int i = 0; i < playbackSegments.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                string path = playbackSegments[i].Cameras[camera];
+                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+                var source = MediaSource.CreateFromStorageFile(file);
+                var item = new MediaPlaybackItem(source);
+                list.Items.Add(item);
+                if (indexMap != null)
+                {
+                    indexMap[item] = i;
+                }
+            }
+
+            return list;
+        }
+
+        private async Task<bool> SetPlayerPlaybackSourceAsync(MediaPlayerElement element, IMediaPlaybackSource source)
+        {
+            if (_isWindowClosing || element?.MediaPlayer == null || source == null)
+            {
+                return false;
+            }
+
+            var player = element.MediaPlayer;
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void Cleanup()
+            {
+                player.MediaOpened -= OnOpened;
+                player.MediaFailed -= OnFailed;
+            }
+
+            void OnOpened(Windows.Media.Playback.MediaPlayer sender, object args)
+            {
+                Cleanup();
+                tcs.TrySetResult(true);
+            }
+
+            void OnFailed(Windows.Media.Playback.MediaPlayer sender, MediaPlayerFailedEventArgs args)
+            {
+                Cleanup();
+                tcs.TrySetResult(false);
+            }
+
+            player.MediaOpened += OnOpened;
+            player.MediaFailed += OnFailed;
+
+            try
+            {
+                player.Source = source;
+
+                var completed = await Task.WhenAny(tcs.Task, Task.Delay(5000));
+                if (_isWindowClosing)
+                {
+                    Cleanup();
+                    return false;
+                }
+
+                if (completed != tcs.Task)
+                {
+                    Cleanup();
+                    CrashLogger.LogMessage("Set playback list source", "Timed out opening media playback list.");
+                    return false;
+                }
+
+                return await tcs.Task;
+            }
+            catch (Exception ex)
+            {
+                Cleanup();
+                if (!_isWindowClosing)
+                {
+                    CrashLogger.Log("Set playback list source", ex);
+                }
+                return false;
+            }
+        }
+
+        private void MainPlaybackList_CurrentItemChanged(MediaPlaybackList sender, CurrentMediaPlaybackItemChangedEventArgs args)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    if (_isWindowClosing ||
+                        !_isUsingPlaybackList ||
+                        _isInitializingPlaybackList ||
+                        sender == null ||
+                        sender != _mainPlaybackList ||
+                        args?.NewItem == null ||
+                        !_mainPlaybackItemSegmentIndexes.TryGetValue(args.NewItem, out int segmentIndex))
+                    {
+                        return;
+                    }
+
+                    if (segmentIndex == _activeSegmentIndex)
+                    {
+                        return;
+                    }
+
+                    int loadVersion = ++_segmentLoadVersion;
+                    LogPlaybackListTransition(segmentIndex);
+                    double localSeconds = Math.Max(0.0, GetPlayerPosition(MainPlayer).TotalSeconds);
+                    SetActivePlaybackListSegment(segmentIndex, localSeconds, loadVersion, queueTelemetry: true);
+                    SyncAuxPlayersToMain(force: true);
+                    SetPlaybackRateForAll(_playbackRate);
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Log("Playback list item changed", ex);
+                }
+            });
+        }
+
+        private void ResetPlaybackListTransitionDiagnostics(int segmentIndex)
+        {
+            if (!_playbackDiagnosticsEnabled)
+            {
+                return;
+            }
+
+            _lastPlaybackListTransitionTicks = Stopwatch.GetTimestamp();
+            _lastPlaybackListTransitionSegmentIndex = segmentIndex;
+        }
+
+        private void LogPlaybackListTransition(int segmentIndex)
+        {
+            if (!_playbackDiagnosticsEnabled)
+            {
+                return;
+            }
+
+            long nowTicks = Stopwatch.GetTimestamp();
+            double wallDeltaMs = _lastPlaybackListTransitionTicks > 0
+                ? ((nowTicks - _lastPlaybackListTransitionTicks) * 1000.0) / Stopwatch.Frequency
+                : 0.0;
+            double expectedMs = 0.0;
+            if (_lastPlaybackListTransitionSegmentIndex >= 0 && _lastPlaybackListTransitionSegmentIndex < _activeSegmentDurations.Count)
+            {
+                double rate = Math.Abs(_playbackRate) > 0.0001 ? Math.Abs(_playbackRate) : 1.0;
+                expectedMs = (_activeSegmentDurations[_lastPlaybackListTransitionSegmentIndex] * 1000.0) / rate;
+            }
+
+            LogPlaybackDiagnostic($"PlaybackListTransition from={_lastPlaybackListTransitionSegmentIndex} to={segmentIndex} wallDeltaMs={wallDeltaMs:0.0} expectedMs={expectedMs:0.0} driftMs={wallDeltaMs - expectedMs:0.0}");
+            _lastPlaybackListTransitionTicks = nowTicks;
+            _lastPlaybackListTransitionSegmentIndex = segmentIndex;
+        }
+
+        private void LogPlaybackDiagnostic(string message)
+        {
+            if (_playbackDiagnosticsEnabled)
+            {
+                CrashLogger.LogMessage("Playback diagnostics", message);
+            }
+        }
+
+        private void MovePlaybackListsToSegment(int segmentIndex, bool includeMain)
+        {
+            if (!_isUsingPlaybackList || segmentIndex < 0)
+            {
+                return;
+            }
+
+            foreach (var pair in _activePlaybackLists.ToList())
+            {
+                if (!includeMain && pair.Key == MainPlayer)
+                {
+                    continue;
+                }
+
+                MediaPlaybackList list = pair.Value;
+                if (list == null || segmentIndex >= list.Items.Count)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    list.MoveTo((uint)segmentIndex);
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Log("Move playback list", ex);
+                }
+            }
+        }
+
+        private void SetActivePlaybackListSegment(int segmentIndex, double localSeconds, int loadVersion, bool queueTelemetry)
+        {
+            if (_activePlaybackSegments == null || segmentIndex < 0 || segmentIndex >= _activePlaybackSegments.Count)
+            {
+                return;
+            }
+
+            _activeSegmentIndex = segmentIndex;
+            _activeSegment = _activePlaybackSegments[segmentIndex];
+
+            double segmentStartSeconds = GetActiveSegmentStartSeconds();
+            double segmentDurationSeconds = segmentIndex < _activeSegmentDurations.Count
+                ? _activeSegmentDurations[segmentIndex]
+                : GetSegmentTimelineDurationSeconds(_activeSegment);
+            double boundedLocalSeconds = Math.Max(0.0, Math.Min(Math.Max(0.1, segmentDurationSeconds), localSeconds));
+            double globalSeconds = Math.Max(0.0, Math.Min(_activeClipDurationSeconds, segmentStartSeconds + boundedLocalSeconds));
+
+            TimelineSlider.Maximum = _activeClipDurationSeconds;
+            SetTimelineValue(globalSeconds);
+            TimeCurrentText.Text = FormatSecs(globalSeconds);
+            TimeDurationText.Text = FormatSecs(_activeClipDurationSeconds);
+            ActiveClipSubtitle.Text = GetActiveClipPlaybackSubtitle();
+
+            if (queueTelemetry)
+            {
+                QueueTelemetryForSegment(_activeSegment, segmentDurationSeconds, loadVersion);
+            }
+        }
+
         private async void SelectClipSegment(TeslaClipSegment segment, bool wasPlaying, double seekSeconds = 0.0, bool keepTimelineInteractive = false)
         {
             var segmentLoadStopwatch = Stopwatch.StartNew();
@@ -3567,6 +3993,7 @@ namespace TeslaCamViewer
                 _activeSegment = segment;
                 _activeSegmentIndex = _activePlaybackSegments?.IndexOf(segment) ?? -1;
                 Pause();
+                ClearPlaybackListState();
                 if (keepSliderEnabled)
                 {
                     PlayPauseBtn.IsEnabled = false;
@@ -3649,50 +4076,7 @@ namespace TeslaCamViewer
                 ActiveClipSubtitle.Text = GetActiveClipPlaybackSubtitle();
                 SetAppStatus($"Video ready in {segmentLoadStopwatch.Elapsed.TotalSeconds:0.0}s", false);
 
-                // LOAD SEI TELEMETRY RECORDSET NATIVELY
-                _activeTelemetry.Clear();
-                ResetHUD();
-
-                string frontPath = segment.Cameras["front"];
-                double telemetryDurationSecs = GetSegmentCameraDurationSeconds(segment, "front", durationSecs);
-                var telemetryPlayer = GetPlayerForCameraAngle("front");
-                var telemetryDuration = telemetryPlayer?.MediaPlayer?.PlaybackSession?.NaturalDuration ?? TimeSpan.Zero;
-                if (!HasExactSegmentDuration(segment) && telemetryDuration.TotalSeconds > 0.0)
-                {
-                    telemetryDurationSecs = telemetryDuration.TotalSeconds;
-                }
-
-                _ = Task.Run(() =>
-                {
-                    try
-                    {
-                        if (_isWindowClosing)
-                        {
-                            return;
-                        }
-
-                        var records = TeslaSeiParser.ExtractTelemetry(frontPath, telemetryDurationSecs);
-                        var dispatcherQueue = DispatcherQueue;
-                        if (records != null && !_isWindowClosing && dispatcherQueue != null)
-                        {
-                            dispatcherQueue.TryEnqueue(() =>
-                            {
-                                if (!_isWindowClosing && loadVersion == _segmentLoadVersion && _activeSegment == segment)
-                                {
-                                    _activeTelemetry = records;
-                                    Debug.WriteLine($"C# SEI Parser successfully decoded {records.Count} telemetry logs.");
-                                }
-                            });
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!_isWindowClosing)
-                        {
-                            CrashLogger.Log("Telemetry parse task", ex);
-                        }
-                    }
-                });
+                QueueTelemetryForSegment(segment, durationSecs, loadVersion);
 
                 _isLoadingSegment = false;
                 if (wasPlaying)
@@ -3713,6 +4097,60 @@ namespace TeslaCamViewer
                     SetPlaybackActivity(false);
                 }
             }
+        }
+
+        private void QueueTelemetryForSegment(TeslaClipSegment segment, double durationSecs, int loadVersion)
+        {
+            _activeTelemetry.Clear();
+            ResetHUD();
+
+            if (segment?.Cameras == null ||
+                !segment.Cameras.TryGetValue("front", out string frontPath) ||
+                string.IsNullOrWhiteSpace(frontPath) ||
+                !File.Exists(frontPath))
+            {
+                return;
+            }
+
+            double telemetryDurationSecs = GetSegmentCameraDurationSeconds(segment, "front", durationSecs);
+            var telemetryPlayer = GetPlayerForCameraAngle("front");
+            var telemetryDuration = telemetryPlayer?.MediaPlayer?.PlaybackSession?.NaturalDuration ?? TimeSpan.Zero;
+            if (!HasExactSegmentDuration(segment) && telemetryDuration.TotalSeconds > 0.0)
+            {
+                telemetryDurationSecs = telemetryDuration.TotalSeconds;
+            }
+
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    if (_isWindowClosing)
+                    {
+                        return;
+                    }
+
+                    var records = TeslaSeiParser.ExtractTelemetry(frontPath, telemetryDurationSecs);
+                    var dispatcherQueue = DispatcherQueue;
+                    if (records != null && !_isWindowClosing && dispatcherQueue != null)
+                    {
+                        dispatcherQueue.TryEnqueue(() =>
+                        {
+                            if (!_isWindowClosing && loadVersion == _segmentLoadVersion && _activeSegment == segment)
+                            {
+                                _activeTelemetry = records;
+                                Debug.WriteLine($"C# SEI Parser successfully decoded {records.Count} telemetry logs.");
+                            }
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!_isWindowClosing)
+                    {
+                        CrashLogger.Log("Telemetry parse task", ex);
+                    }
+                }
+            });
         }
 
         private void QueueAuxPlayerLoading(TeslaClipSegment segment, int loadVersion, TimeSpan targetPosition)
@@ -3813,6 +4251,11 @@ namespace TeslaCamViewer
 
                 var icon = PlayPauseBtn.Content as FontIcon;
                 if (icon != null) icon.Glyph = "\uE769"; // Pause glyph
+
+                if (_isUsingPlaybackList)
+                {
+                    ResetPlaybackListTransitionDiagnostics(_activeSegmentIndex);
+                }
 
                 SyncAuxPlayersToMain(force: true);
                 SetPlaybackRateForAll(_playbackRate);
@@ -4180,6 +4623,38 @@ namespace TeslaCamViewer
             }
         }
 
+        private void ClearAllPlayerSources()
+        {
+            ClearPlaybackListState();
+            ClearPlayerSource(MainPlayer);
+            foreach (var slot in GetAuxSlots())
+            {
+                ClearPlayerSource(slot.Player);
+                slot.Player.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void ClearPlaybackListState()
+        {
+            try
+            {
+                if (_mainPlaybackList != null)
+                {
+                    _mainPlaybackList.CurrentItemChanged -= MainPlaybackList_CurrentItemChanged;
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Clear playback list state", ex);
+            }
+
+            _mainPlaybackList = null;
+            _mainPlaybackItemSegmentIndexes.Clear();
+            _activePlaybackLists.Clear();
+            _isUsingPlaybackList = false;
+            _isInitializingPlaybackList = false;
+        }
+
         private void ClearPlayerSource(MediaPlayerElement element)
         {
             if (_isWindowClosing) return;
@@ -4260,6 +4735,11 @@ namespace TeslaCamViewer
                     break;
                 }
             }
+        }
+
+        private void UpdateAuxCardLabel(Border card, string cameraAngle)
+        {
+            ResetAuxLabel(card, GetFriendlyAngleLabel(cameraAngle));
         }
 
         private IEnumerable<(Border Card, MediaPlayerElement Player)> GetAuxSlots()
@@ -4433,6 +4913,12 @@ namespace TeslaCamViewer
             var target = GetSegmentPositionForGlobalTime(globalSeconds);
             if (target.SegmentIndex < 0) return;
 
+            if (_isUsingPlaybackList)
+            {
+                SeekPlaybackListToGlobalTime(globalSeconds, resumePlayback);
+                return;
+            }
+
             if (target.SegmentIndex == _activeSegmentIndex)
             {
                 SeekAllPlayers(TimeSpan.FromSeconds(target.LocalSeconds));
@@ -4448,6 +4934,31 @@ namespace TeslaCamViewer
             }
 
             SelectClipSegment(_activePlaybackSegments[target.SegmentIndex], resumePlayback, target.LocalSeconds, keepTimelineInteractive);
+        }
+
+        private void SeekPlaybackListToGlobalTime(double globalSeconds, bool resumePlayback)
+        {
+            if (!_isUsingPlaybackList)
+            {
+                return;
+            }
+
+            var target = GetSegmentPositionForGlobalTime(globalSeconds);
+            if (target.SegmentIndex < 0)
+            {
+                return;
+            }
+
+            int loadVersion = ++_segmentLoadVersion;
+            MovePlaybackListsToSegment(target.SegmentIndex, includeMain: true);
+            SeekAllPlayers(TimeSpan.FromSeconds(target.LocalSeconds));
+            SetActivePlaybackListSegment(target.SegmentIndex, target.LocalSeconds, loadVersion, queueTelemetry: true);
+            ResetPlaybackListTransitionDiagnostics(target.SegmentIndex);
+
+            if (resumePlayback && GetPlaybackState(MainPlayer) != MediaPlaybackState.Playing)
+            {
+                Play();
+            }
         }
 
         private string GetActiveClipPlaybackSubtitle()
@@ -5519,6 +6030,11 @@ namespace TeslaCamViewer
                 return;
             }
 
+            if (_isUsingPlaybackList && force && _activeSegmentIndex >= 0)
+            {
+                MovePlaybackListsToSegment(_activeSegmentIndex, includeMain: false);
+            }
+
             foreach (var player in GetLoadedAuxPlayers())
             {
                 try
@@ -5636,6 +6152,12 @@ namespace TeslaCamViewer
             string mainAngle = _mainAngle;
             if (mainAngle == null || mainAngle == selectedAngle) return;
 
+            if (_isUsingPlaybackList)
+            {
+                await SwitchPlaybackListMainCameraAsync(border, selectedAngle, mainAngle);
+                return;
+            }
+
             // Verify both angles have camera files available
             if (!_activeSegment.Cameras.TryGetValue(selectedAngle, out string selectedPath) ||
                 !_activeSegment.Cameras.TryGetValue(mainAngle, out string previousMainPath))
@@ -5716,6 +6238,59 @@ namespace TeslaCamViewer
                     SetPlaybackActivity(false);
                     SetPlaybackControlsEnabled(HasPlayerSource(MainPlayer));
                 }
+            }
+        }
+
+        private async Task SwitchPlaybackListMainCameraAsync(Border border, string selectedAngle, string previousMainAngle)
+        {
+            if (_activeClip == null || _activePlaybackSegments == null || _activePlaybackSegments.Count == 0)
+            {
+                return;
+            }
+
+            bool wasPlaying = isPlaying;
+            double globalSeconds = GetGlobalPlaybackSeconds();
+            int clipVersion = _clipSelectionVersion;
+
+            try
+            {
+                Pause();
+                SetPlaybackControlsEnabled(false);
+                SetPlaybackActivity(true, "Switching camera...");
+
+                _mainAngle = selectedAngle;
+                MainAngleLabel.Text = GetFriendlyAngleLabel(selectedAngle);
+                MainAngleLabel.Tag = selectedAngle;
+
+                border.Tag = previousMainAngle;
+                UpdateAuxCardLabel(border, previousMainAngle);
+                RebuildAuxPlayerMapFromCards();
+
+                bool started = await TryStartPlaybackListAsync(
+                    _activeClip,
+                    _activePlaybackSegments.ToList(),
+                    wasPlaying,
+                    globalSeconds,
+                    clipVersion,
+                    CancellationToken.None);
+
+                if (!started)
+                {
+                    var target = GetSegmentPositionForGlobalTime(globalSeconds);
+                    if (target.SegmentIndex >= 0 && target.SegmentIndex < _activePlaybackSegments.Count)
+                    {
+                        SelectClipSegment(_activePlaybackSegments[target.SegmentIndex], wasPlaying, target.LocalSeconds);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ActiveClipSubtitle.Text = "Camera swap error: " + ex.Message;
+                CrashLogger.Log("Playback list camera swap", ex);
+            }
+            finally
+            {
+                SetPlaybackActivity(false);
             }
         }
 
