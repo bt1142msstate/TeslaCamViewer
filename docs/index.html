@@ -12,12 +12,12 @@
   <meta property="og:title" content="TESLA Cam - Windows TeslaCam Viewer">
   <meta property="og:description" content="Free TeslaCam drive review with continuous multi-camera playback, telemetry, markers, and export tools. No export watermarks or forced branding.">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="https://bt1142msstate.github.io/TeslaCamViewer/screenshots/app-playback-dashboard.png">
+  <meta property="og:image" content="https://bt1142msstate.github.io/TeslaCamViewer/screenshots/hero-desktop-daylight.png">
   <meta property="og:url" content="https://bt1142msstate.github.io/TeslaCamViewer/">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="TESLA Cam - Windows TeslaCam Viewer">
   <meta name="twitter:description" content="Free stitched TeslaCam playback, telemetry, markers, and export tools with no export watermarks or forced branding.">
-  <meta name="twitter:image" content="https://bt1142msstate.github.io/TeslaCamViewer/screenshots/app-playback-dashboard.png">
+  <meta name="twitter:image" content="https://bt1142msstate.github.io/TeslaCamViewer/screenshots/hero-desktop-daylight.png">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -35,7 +35,7 @@
     "codeRepository": "https://github.com/bt1142msstate/TeslaCamViewer",
     "downloadUrl": "https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe",
     "license": "https://github.com/bt1142msstate/TeslaCamViewer/blob/main/LICENSE",
-    "image": "https://bt1142msstate.github.io/TeslaCamViewer/screenshots/app-playback-dashboard.png",
+    "image": "https://bt1142msstate.github.io/TeslaCamViewer/screenshots/hero-desktop-daylight.png",
     "offers": {
       "@type": "Offer",
       "price": "0",
@@ -156,7 +156,7 @@
       align-items: end;
       overflow: hidden;
       border-bottom: 1px solid var(--line);
-      background: #070a0f url("screenshots/app-playback-dashboard.png") center / cover no-repeat;
+      background: #070a0f url("screenshots/hero-desktop-daylight.png") center / cover no-repeat;
       isolation: isolate;
     }
 
@@ -427,8 +427,12 @@
     }
 
     .command {
-      display: block;
-      overflow-x: auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      overflow-x: visible;
       margin: 16px 0 0;
       padding: 14px 16px;
       border: 1px solid var(--line);
@@ -436,7 +440,54 @@
       background: #070a0f;
       color: #e6edf6;
       font: 0.92rem Consolas, "Cascadia Code", monospace;
-      white-space: pre;
+      white-space: normal;
+      text-align: left;
+    }
+
+    button.command {
+      appearance: none;
+      cursor: pointer;
+      transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+    }
+
+    button.command:hover,
+    button.command:focus-visible {
+      border-color: rgba(91, 210, 255, 0.58);
+      background: #0a1118;
+      box-shadow: 0 0 0 3px rgba(91, 210, 255, 0.12);
+      outline: none;
+      transform: translateY(-1px);
+    }
+
+    .command code {
+      min-width: 0;
+      overflow-x: auto;
+      color: inherit;
+      font: inherit;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .copy-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 30px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.09);
+      color: #dce6ef;
+      font: 0.78rem "Segoe UI", system-ui, sans-serif;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .copy-action svg {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
     }
 
     .roadmap-grid {
@@ -501,38 +552,6 @@
       font-size: 0.72rem;
       font-weight: 850;
       overflow-wrap: anywhere;
-    }
-
-    .cashapp-qr-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      color: var(--muted);
-      font-size: 0.82rem;
-      font-weight: 650;
-      text-decoration: none;
-      transition: color 160ms ease;
-    }
-
-    .cashapp-qr-row:hover,
-    .cashapp-qr-row:focus-visible {
-      color: var(--text);
-      outline: none;
-    }
-
-    .cashapp-qr {
-      width: 86px;
-      height: 86px;
-      flex: 0 0 auto;
-      padding: 8px;
-      border-radius: 8px;
-      background: #fff;
-    }
-
-    .cashapp-qr img {
-      display: block;
-      width: 100%;
-      height: 100%;
     }
 
     .notice {
@@ -625,25 +644,65 @@
 
     @media (max-width: 620px) {
       .site-nav {
+        position: absolute;
         top: 10px;
-        width: calc(100vw - 20px);
-        max-width: calc(100vw - 20px);
+        left: 10px;
+        right: 10px;
+        width: auto;
+        max-width: none;
+        transform: none;
+        gap: 8px;
+        padding: 8px;
+      }
+
+      .brand {
+        gap: 8px;
+      }
+
+      .brand img {
+        width: 26px;
+        height: 26px;
+      }
+
+      .brand span {
+        font-size: 0.96rem;
+      }
+
+      .nav-links {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px;
+        overflow-x: visible;
+      }
+
+      .nav-links a {
+        min-width: 0;
+        padding: 6px 4px;
+        font-size: 0.78rem;
+        line-height: 1.15;
+        text-align: center;
+        white-space: nowrap;
+      }
+
+      .nav-links a:last-child {
+        grid-column: 1 / -1;
       }
 
       .hero {
         min-height: 82svh;
-        background-position: 58% center;
+        background-image: url("screenshots/hero-mobile-daylight.png");
+        background-position: center;
       }
 
       .hero-inner,
       .section,
       .footer-inner {
-        width: calc(100vw - 28px);
-        max-width: calc(100vw - 28px);
+        width: calc(100% - 28px);
+        max-width: calc(100% - 28px);
       }
 
       .hero-inner {
-        padding-top: 150px;
+        padding-top: 172px;
       }
 
       h1 {
@@ -651,6 +710,7 @@
       }
 
       .tagline {
+        max-width: 100%;
         font-size: 1.05rem;
       }
 
@@ -660,22 +720,22 @@
 
       .section-heading {
         display: block;
-        width: calc(100vw - 28px);
-        max-width: calc(100vw - 28px);
+        width: calc(100% - 28px);
+        max-width: calc(100% - 28px);
       }
 
       .section-heading p {
         margin-top: 10px;
-        width: calc(100vw - 28px);
-        max-width: calc(100vw - 28px);
+        width: 100%;
+        max-width: 100%;
       }
 
       .feature-grid,
       .install-layout,
       .roadmap-grid,
       .shot-grid {
-        width: calc(100vw - 28px);
-        max-width: calc(100vw - 28px);
+        width: calc(100% - 28px);
+        max-width: calc(100% - 28px);
       }
 
       .feature-card,
@@ -684,7 +744,20 @@
       .shot-frame,
       .notice {
         width: 100%;
-        max-width: calc(100vw - 28px);
+        max-width: 100%;
+      }
+
+      .command {
+        grid-template-columns: 1fr;
+        line-height: 1.45;
+      }
+
+      .command code {
+        overflow-x: visible;
+      }
+
+      .copy-action {
+        justify-self: start;
       }
 
       .footer-inner {
@@ -835,7 +908,16 @@
           <span class="pill">Command Line</span>
           <h3>Script And WinGet Path</h3>
           <p class="muted">The PowerShell script remains available as a fallback. WinGet is planned after the package name, signed installer, and release identity are stable.</p>
-          <code class="command">winget install --id BrandonTemple.FinalAppName -e</code>
+          <button class="command" type="button" data-copy-command="winget install --id BrandonTemple.FinalAppName -e" aria-label="Copy command">
+            <code>winget install --id BrandonTemple.FinalAppName -e</code>
+            <span class="copy-action" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="copy-label">Copy</span>
+            </span>
+          </button>
           <div class="button-row">
             <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/Install-TESLA-Cam.ps1">Script fallback</a>
             <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/packaging/winget/README.md">WinGet plan</a>
@@ -872,10 +954,6 @@
                 Cash App
                 <small>$BrandonTemple0</small>
               </span>
-            </a>
-            <a class="cashapp-qr-row" href="https://cash.app/$BrandonTemple0" aria-label="Scan or open Cash App support link">
-              <span class="cashapp-qr"><img src="assets/cashapp-qr.svg" alt=""></span>
-              <span>Scan to support development</span>
             </a>
           </div>
         </article>
@@ -931,5 +1009,66 @@
       </div>
     </div>
   </footer>
+  <script>
+    (() => {
+      const commands = document.querySelectorAll("[data-copy-command]");
+
+      const copyWithFallback = async (text) => {
+        if (navigator.clipboard && window.isSecureContext) {
+          try {
+            await navigator.clipboard.writeText(text);
+            return;
+          } catch {
+            // Fall back for browsers that expose Clipboard API but block this page.
+          }
+        }
+
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.setAttribute("readonly", "");
+        textArea.style.position = "fixed";
+        textArea.style.top = "-999px";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          if (!document.execCommand("copy")) {
+            throw new Error("Copy command failed");
+          }
+        } finally {
+          textArea.remove();
+        }
+      };
+
+      commands.forEach((command) => {
+        const label = command.querySelector(".copy-label");
+        const originalLabel = label ? label.textContent : "";
+        let resetTimer;
+
+        command.addEventListener("click", async () => {
+          const text = command.getAttribute("data-copy-command");
+
+          try {
+            await copyWithFallback(text);
+            if (label) {
+              label.textContent = "Copied";
+              window.clearTimeout(resetTimer);
+              resetTimer = window.setTimeout(() => {
+                label.textContent = originalLabel;
+              }, 1600);
+            }
+          } catch {
+            if (label) {
+              label.textContent = "Copy failed";
+              window.clearTimeout(resetTimer);
+              resetTimer = window.setTimeout(() => {
+                label.textContent = originalLabel;
+              }, 1800);
+            }
+          }
+        });
+      });
+    })();
+  </script>
 </body>
 </html>
