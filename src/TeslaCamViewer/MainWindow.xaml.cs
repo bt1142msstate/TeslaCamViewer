@@ -1920,7 +1920,8 @@ namespace TeslaCamViewer
         private ClipTelemetrySummary BuildClipTelemetrySummary(TeslaClip clip, CancellationToken cancellationToken)
         {
             var summary = new ClipTelemetrySummary();
-            bool? wasFsdEngaged = null;
+            bool previousSegmentEndedWithFsd = false;
+            bool hasPreviousTelemetrySegment = false;
 
             foreach (TeslaClipSegment segment in (clip?.Segments ?? new List<TeslaClipSegment>()).OrderBy(s => s.Timestamp))
             {
@@ -1929,7 +1930,8 @@ namespace TeslaCamViewer
                 AutopilotTelemetrySummary segmentSummary = GetOrBuildSegmentTelemetrySummary(segment, cancellationToken);
                 if (segmentSummary == null || segmentSummary.TelemetryRecordCount <= 0)
                 {
-                    wasFsdEngaged = null;
+                    hasPreviousTelemetrySegment = false;
+                    previousSegmentEndedWithFsd = false;
                     continue;
                 }
 
@@ -1939,12 +1941,15 @@ namespace TeslaCamViewer
                 summary.FsdSeconds += segmentSummary.FsdSeconds;
                 summary.FsdDisengagementCount += segmentSummary.FsdDisengagementCount;
 
-                if (wasFsdEngaged == true && segmentSummary.FirstIsFsdEngaged == false)
+                if (hasPreviousTelemetrySegment &&
+                    previousSegmentEndedWithFsd &&
+                    segmentSummary.FirstManualDrivingRangeNeedsPriorFsd)
                 {
                     summary.FsdDisengagementCount++;
                 }
 
-                wasFsdEngaged = segmentSummary.LastIsFsdEngaged;
+                previousSegmentEndedWithFsd = segmentSummary.LastIsFsdEngaged;
+                hasPreviousTelemetrySegment = true;
             }
 
             return summary;
@@ -2020,7 +2025,7 @@ namespace TeslaCamViewer
         private string GetClipTelemetrySummaryCachePath()
         {
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return Path.Combine(localAppData, "TeslaCamViewer", "TelemetrySummaryCache", "summary-cache-v2.json");
+            return Path.Combine(localAppData, "TeslaCamViewer", "TelemetrySummaryCache", "summary-cache-v3.json");
         }
 
         private void LoadClipTelemetrySummaryCache()
@@ -6681,6 +6686,9 @@ namespace TeslaCamViewer
         public double FsdSeconds { get; set; }
         public bool FirstIsFsdEngaged { get; set; }
         public bool LastIsFsdEngaged { get; set; }
+        public bool FirstIsManualDriving { get; set; }
+        public bool LastIsManualDriving { get; set; }
+        public bool FirstManualDrivingRangeNeedsPriorFsd { get; set; }
     }
 
     public readonly struct TimelineRange
@@ -6700,8 +6708,10 @@ namespace TeslaCamViewer
         public static readonly AutopilotManualDrivingTimeline Empty = new AutopilotManualDrivingTimeline();
 
         public int TelemetryRecordCount { get; set; }
+        public int FsdDisengagementCount { get; set; }
         public bool FirstIsManualDriving { get; set; }
         public bool LastIsManualDriving { get; set; }
+        public bool FirstManualDrivingRangeNeedsPriorFsd { get; set; }
         public List<TimelineRange> ManualRanges { get; set; } = new List<TimelineRange>();
     }
 
@@ -7191,12 +7201,11 @@ namespace TeslaCamViewer
                 : 60.0;
             var summary = new AutopilotTelemetrySummary();
             double fallbackIntervalSeconds = duration / samples.Count;
-            bool? previousIsFsdEngaged = null;
 
             for (int i = 0; i < samples.Count; i++)
             {
                 AutopilotTelemetrySample sample = samples[i];
-                bool isFsdEngaged = sample.AutopilotState == 1;
+                bool isFsdEngaged = IsFsdEngagedSample(sample);
                 if (i == 0)
                 {
                     summary.FirstIsFsdEngaged = isFsdEngaged;
@@ -7225,14 +7234,13 @@ namespace TeslaCamViewer
                 {
                     summary.FsdSeconds += intervalSeconds;
                 }
-
-                if (previousIsFsdEngaged == true && !isFsdEngaged)
-                {
-                    summary.FsdDisengagementCount++;
-                }
-
-                previousIsFsdEngaged = isFsdEngaged;
             }
+
+            AutopilotManualDrivingTimeline manualTimeline = BuildAutopilotManualDrivingTimeline(samples, duration);
+            summary.FsdDisengagementCount = manualTimeline.FsdDisengagementCount;
+            summary.FirstIsManualDriving = manualTimeline.FirstIsManualDriving;
+            summary.LastIsManualDriving = manualTimeline.LastIsManualDriving;
+            summary.FirstManualDrivingRangeNeedsPriorFsd = manualTimeline.FirstManualDrivingRangeNeedsPriorFsd;
 
             return summary;
         }
@@ -7274,6 +7282,8 @@ namespace TeslaCamViewer
             }
 
             int manualStartIndex = -1;
+            int fsdSearchStartIndex = 0;
+            bool hasAcceptedManualRange = false;
             for (int i = 0; i <= samples.Count; i++)
             {
                 bool isManualDriving = i < samples.Count && isManualDrivingSamples[i];
@@ -7292,12 +7302,29 @@ namespace TeslaCamViewer
                     int manualEndIndex = i - 1;
                     if (!IsAutonomyParkingTail(samples, intervalStarts, intervalEnds, manualStartIndex, manualEndIndex, duration))
                     {
-                        AddManualTimelineRange(
+                        bool hasFsdBeforeManualRange = HasFsdSampleBetween(samples, fsdSearchStartIndex, manualStartIndex - 1);
+                        bool addedRange = AddManualTimelineRange(
                             timeline.ManualRanges,
                             intervalStarts[manualStartIndex],
                             intervalEnds[manualEndIndex]);
+
+                        if (addedRange)
+                        {
+                            if (!hasAcceptedManualRange && !hasFsdBeforeManualRange)
+                            {
+                                timeline.FirstManualDrivingRangeNeedsPriorFsd = true;
+                            }
+
+                            if (hasFsdBeforeManualRange)
+                            {
+                                timeline.FsdDisengagementCount++;
+                            }
+
+                            hasAcceptedManualRange = true;
+                        }
                     }
 
+                    fsdSearchStartIndex = manualEndIndex + 1;
                     manualStartIndex = -1;
                 }
             }
@@ -7310,11 +7337,11 @@ namespace TeslaCamViewer
             return timeline;
         }
 
-        private static void AddManualTimelineRange(List<TimelineRange> ranges, double startSeconds, double endSeconds)
+        private static bool AddManualTimelineRange(List<TimelineRange> ranges, double startSeconds, double endSeconds)
         {
             if (ranges == null || endSeconds - startSeconds <= ManualDrivingRangeMinDurationSeconds)
             {
-                return;
+                return false;
             }
 
             if (ranges.Count > 0)
@@ -7323,11 +7350,12 @@ namespace TeslaCamViewer
                 if (startSeconds <= previous.EndSeconds + 0.15)
                 {
                     ranges[ranges.Count - 1] = new TimelineRange(previous.StartSeconds, Math.Max(previous.EndSeconds, endSeconds));
-                    return;
+                    return false;
                 }
             }
 
             ranges.Add(new TimelineRange(startSeconds, endSeconds));
+            return true;
         }
 
         private static bool IsAutonomyParkingTail(
@@ -7434,6 +7462,31 @@ namespace TeslaCamViewer
             }
 
             return Math.Abs(sample.VehicleSpeedMps) >= ManualDrivingSpeedThresholdMps;
+        }
+
+        private static bool HasFsdSampleBetween(List<AutopilotTelemetrySample> samples, int startIndex, int endIndex)
+        {
+            if (samples == null || samples.Count == 0 || endIndex < startIndex)
+            {
+                return false;
+            }
+
+            int start = Math.Max(0, startIndex);
+            int end = Math.Min(samples.Count - 1, endIndex);
+            for (int i = end; i >= start; i--)
+            {
+                if (IsFsdEngagedSample(samples[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsFsdEngagedSample(AutopilotTelemetrySample sample)
+        {
+            return sample.AutopilotState == 1;
         }
 
         private static bool IsAutonomyActiveSample(AutopilotTelemetrySample sample)
