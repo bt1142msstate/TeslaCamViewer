@@ -3386,8 +3386,43 @@ namespace TeslaCamViewer
                 var sortedSegments = clip.Segments.OrderBy(s => s.Timestamp).ToList();
                 clip.Segments = sortedSegments;
 
-                TeslaClipSegment cachedStitchedSegment = TryGetCachedStitchedPlaybackSegment(clip, sortedSegments);
-                if (cachedStitchedSegment == null)
+                bool needsStitchedPlayback = sortedSegments.Count > 1;
+                TeslaClipSegment stitchedPlaybackSegment = needsStitchedPlayback
+                    ? TryGetCachedStitchedPlaybackSegment(clip, sortedSegments)
+                    : null;
+
+                if (needsStitchedPlayback && stitchedPlaybackSegment == null)
+                {
+                    string ffmpegPath = FindFfmpegExecutable();
+                    if (string.IsNullOrWhiteSpace(ffmpegPath))
+                    {
+                        ActiveClipSubtitle.Text = "Playback unavailable: bundled ffmpeg.exe was not found.";
+                        return;
+                    }
+
+                    SetPlaybackActivity(true, "Stitching seamless drive...");
+                    SetStitchActivity(true, "Stitching seamless drive...");
+                    stitchedPlaybackSegment = await Task.Run(() => BuildStitchedPlaybackSegment(clip, sortedSegments, ffmpegPath, stitchToken), stitchToken);
+                    if (_isWindowClosing ||
+                        clipVersion != _clipSelectionVersion ||
+                        _activeClip != clip ||
+                        stitchToken.IsCancellationRequested ||
+                        markerToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    SetStitchActivity(false);
+
+                    if (stitchedPlaybackSegment?.Cameras == null ||
+                        !stitchedPlaybackSegment.Cameras.ContainsKey("front"))
+                    {
+                        SetPlaybackActivity(false);
+                        ActiveClipSubtitle.Text = "Playback unavailable: unable to stitch this drive.";
+                        return;
+                    }
+                }
+                else if (!needsStitchedPlayback)
                 {
                     SetPlaybackActivity(true, "Reading clip timing...");
                     await Task.Run(() => PopulateSegmentExactDurations(sortedSegments, "front"));
@@ -3403,23 +3438,26 @@ namespace TeslaCamViewer
                     SetPlaybackActivity(false);
                 }
 
-                List<TeslaClipSegment> playbackSegments = cachedStitchedSegment != null
-                    ? new List<TeslaClipSegment> { cachedStitchedSegment }
+                List<TeslaClipSegment> playbackSegments = stitchedPlaybackSegment != null
+                    ? new List<TeslaClipSegment> { stitchedPlaybackSegment }
                     : sortedSegments;
 
                 _activePlaybackSegments = playbackSegments;
                 InitializeClipTimeline(playbackSegments);
-                QueueManualDrivingRangesForClip(clip, sortedSegments, clipVersion, markerToken);
+                QueueManualDrivingRangesForClip(clip, playbackSegments, clipVersion, markerToken);
 
                 if (playbackSegments.Count > 0)
                 {
                     ActiveClipTitle.Text = !string.IsNullOrWhiteSpace(clip.DateText) ? clip.DateText : clip.Title;
                     SelectClipSegment(playbackSegments[0], wasPlaying: keepPlaying);
                 }
-
-                if (cachedStitchedSegment == null)
+            }
+            catch (OperationCanceledException)
+            {
+                if (clipVersion == _clipSelectionVersion)
                 {
-                    _ = PrepareStitchedPlaybackInBackgroundAsync(clip, sortedSegments, clipVersion, stitchToken);
+                    SetPlaybackActivity(false);
+                    SetStitchActivity(false);
                 }
             }
             catch (Exception ex)
