@@ -6,7 +6,7 @@ Git, or manual ZIP extraction.
 
 Recommended preview download:
 
-https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe
+https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.3/TESLA-Cam-win-x64-Setup.exe
 
 Download the setup executable and run it. It installs TESLA Cam under the user's
 profile, creates Start Menu and desktop shortcuts, and launches the app. No
@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1
 To install a specific release tag:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1 -ReleaseTag v0.1.0-preview.2
+powershell -ExecutionPolicy Bypass -File .\Install-TESLA-Cam.ps1 -ReleaseTag v0.1.0-preview.3
 ```
 
 The installer downloads the selected non-draft GitHub release, verifies the zip
