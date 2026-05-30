@@ -1,7 +1,7 @@
 <div align="center">
   <img src="src/TeslaCamViewer/Assets/AppIcon.svg" width="86" alt="TESLA Cam app icon">
   <h1>TESLA Cam</h1>
-  <p><strong>Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry indexing, disengagement markers, and export.</strong></p>
+  <p><strong>Free source-available Windows TeslaCam viewer for exact-timed stitched drive playback, multi-camera review, telemetry indexing, manual-driving timeline ranges, and export.</strong></p>
   <p>
     <a href="https://github.com/bt1142msstate/TeslaCamViewer/actions/workflows/windows-build.yml"><img alt="Windows Build" src="https://img.shields.io/github/actions/workflow/status/bt1142msstate/TeslaCamViewer/windows-build.yml?branch=main&label=windows%20build"></a>
     <a href="https://github.com/bt1142msstate/TeslaCamViewer/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/bt1142msstate/TeslaCamViewer?include_prereleases&label=release"></a>
@@ -13,7 +13,7 @@
 
 ![TESLA Cam playback dashboard with stitched TeslaCam cameras and telemetry](docs/screenshots/app-playback-dashboard.png)
 
-TESLA Cam is a Windows desktop viewer for TeslaCam footage. It is built with WinUI 3 and Windows App SDK, and focuses on turning Tesla's split camera files into a drive-centered viewing experience with continuous playback, synchronized telemetry, searchable clip context, and export tools.
+TESLA Cam is a Windows desktop viewer for TeslaCam footage. It is built with WinUI 3 and Windows App SDK, and focuses on turning Tesla's split camera files into a drive-centered viewing experience with exact MP4-derived timing, continuous playback, synchronized telemetry, searchable clip context, and export tools.
 
 The core app is intended to stay free. The free version should not add ads,
 promotional overlays, export watermarks, or forced branding to your clips.
@@ -39,28 +39,30 @@ available on the [portfolio contact section](https://brandontemple.com/#contact)
 ## Categories And Tags
 
 Categories: TeslaCam viewer, dashcam footage review, multi-camera video player,
-vehicle telemetry, Windows desktop app, video stitching, clip export, marker
-based editing, Sentry Mode review.
+vehicle telemetry, Windows desktop app, exact-timed video stitching, clip
+export, marker based editing, manual driving timeline review, Sentry Mode
+review.
 
 Tags: `tesla`, `teslacam`, `tesla-dashcam`, `dashcam-viewer`, `winui3`,
 `windows-app-sdk`, `dotnet`, `ffmpeg`, `mp4`, `telemetry`, `fsd`,
-`disengagement-markers`, `video-stitching`, `video-export`, `sentry-mode`,
-`source-available`, `github-releases`, `winget`.
+`manual-driving-ranges`, `exact-video-timing`, `video-stitching`,
+`video-export`, `sentry-mode`, `source-available`, `github-releases`, `winget`.
 
 ## Current Features
 
 - Scan a mounted TeslaCam drive, copied TeslaCam folder, or supported ZIP archive.
 - Watch the selected source for detached drives, changed folders, and newly added clips.
-- Group one-minute TeslaCam segments into drive sessions.
+- Group TeslaCam segments into exact-duration drive sessions using MP4 sample and edit table timing.
 - Stitch each drive into continuous camera feeds for smoother playback.
 - Show front, rear, repeater, and pillar camera views together in a dark translucent WinUI interface.
 - Swap the main camera view by clicking an auxiliary view.
 - Scrub across the full drive timeline with a custom liquid-glass scrubber.
-- Show yellow disengagement markers directly on the timeline track.
+- Show yellow manual-driving ranges directly on the timeline track.
 - Add IN and OUT range markers for exporting.
 - Display embedded telemetry including speed, steering, gear, pedals, blinkers, GPS, heading, g-force, and autonomy state.
 - Label steering as left, right, or straight instead of showing negative steering values.
 - Index clip-level FSD percentage and disengagement counts in the background.
+- Use exact per-camera MP4 durations for timeline starts, telemetry windows, manual-driving ranges, stitching, and export slices.
 - Cache telemetry summaries locally so repeat scans are faster without writing to the Tesla storage device.
 - Show app status while scanning, indexing telemetry, stitching, loading, and exporting.
 - Use a virtualized clip list so large drives do not spawn every clip row at once.
