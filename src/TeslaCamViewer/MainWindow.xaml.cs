@@ -54,6 +54,8 @@ namespace TeslaCamViewer
         private double _sidebarResizeStartWidth = 320.0;
         private readonly HashSet<string> _thumbnailJobs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly SemaphoreSlim _thumbnailSemaphore = new SemaphoreSlim(1, 1);
+        private readonly object _videoDurationCacheLock = new object();
+        private readonly Dictionary<string, double> _videoDurationCache = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         private readonly object _clipTelemetrySummaryCacheLock = new object();
         private readonly Dictionary<string, AutopilotTelemetrySummary> _clipTelemetrySummaryCache = new Dictionary<string, AutopilotTelemetrySummary>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, long> _clipTelemetrySummaryCacheAccessTicks = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
@@ -61,7 +63,7 @@ namespace TeslaCamViewer
         private CancellationTokenSource _clipTelemetrySummaryCacheSaveCancellation = new CancellationTokenSource();
         private bool _clipTelemetrySummaryCacheDirty = false;
         private List<SeiMetadata> _activeTelemetry = new List<SeiMetadata>();
-        private List<double> _activeDisengagementMarkerSeconds = new List<double>();
+        private List<TimelineRange> _activeManualDrivingRanges = new List<TimelineRange>();
         private List<double> _activeSegmentStarts = new List<double>();
         private List<double> _activeSegmentDurations = new List<double>();
         private int _activeSegmentIndex = -1;
@@ -206,7 +208,7 @@ namespace TeslaCamViewer
             _isWindowClosing = true;
             CancelActiveStitch();
             CancelClipTelemetrySummaryScan();
-            CancelDisengagementMarkerScan();
+            CancelManualDrivingRangeScan();
             FlushClipTelemetrySummaryCache();
 
             try { _hudTimer?.Stop(); } catch { }
@@ -370,7 +372,7 @@ namespace TeslaCamViewer
                     var files = Directory.GetFiles(catPath, "*.mp4");
                     var dict = BuildSegmentDictionaryFromFiles(files, suffixes);
 
-                    // Group continuous one-minute TeslaCam files into drive sessions.
+                    // Group continuous TeslaCam files into drive sessions.
                     var sortedSegments = dict.Values.OrderBy(s => s.Timestamp).ToList();
                     loaded.AddRange(BuildRecentClipSessions(sortedSegments, cat));
                 }
@@ -388,7 +390,7 @@ namespace TeslaCamViewer
                             var firstTimestamp = sortedSegs[0].Timestamp;
                             var lastTimestamp = sortedSegs[sortedSegs.Count - 1].Timestamp;
                             string eventReason = ReadEventReason(ed);
-                            var display = BuildClipDisplayMetadata(firstTimestamp, lastTimestamp, sortedSegs.Count, eventReason);
+                            var display = BuildClipDisplayMetadata(firstTimestamp, lastTimestamp, sortedSegs, eventReason);
 
                             var eventClip = new TeslaClip
                             {
@@ -431,7 +433,157 @@ namespace TeslaCamViewer
                 dict[timestamp].Cameras[cam] = f;
             }
 
+            PopulateSegmentExactDurations(dict.Values);
             return dict;
+        }
+
+        private void PopulateSegmentExactDurations(IEnumerable<TeslaClipSegment> segments)
+        {
+            if (segments == null)
+            {
+                return;
+            }
+
+            foreach (TeslaClipSegment segment in segments)
+            {
+                PopulateSegmentExactDurations(segment);
+            }
+        }
+
+        private void PopulateSegmentExactDurations(TeslaClipSegment segment)
+        {
+            if (segment?.Cameras == null || segment.Cameras.Count == 0)
+            {
+                return;
+            }
+
+            if (segment.CameraDurationSeconds == null)
+            {
+                segment.CameraDurationSeconds = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            segment.CameraDurationSeconds.Clear();
+            foreach (var pair in segment.Cameras)
+            {
+                double durationSeconds = GetExactVideoDurationSeconds(pair.Value);
+                if (durationSeconds > 0.0)
+                {
+                    segment.CameraDurationSeconds[pair.Key] = durationSeconds;
+                }
+            }
+
+            double timelineDurationSeconds = ResolveSegmentTimelineDurationSeconds(segment, fallbackSeconds: 0.0);
+            if (timelineDurationSeconds > 0.0)
+            {
+                segment.EstimatedDurationSeconds = timelineDurationSeconds;
+            }
+        }
+
+        private double GetExactVideoDurationSeconds(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return 0.0;
+            }
+
+            try
+            {
+                var info = new FileInfo(filePath);
+                if (!info.Exists)
+                {
+                    return 0.0;
+                }
+
+                string cacheKey = $"{info.FullName}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+                lock (_videoDurationCacheLock)
+                {
+                    if (_videoDurationCache.TryGetValue(cacheKey, out double cachedDuration))
+                    {
+                        return cachedDuration;
+                    }
+                }
+
+                double durationSeconds = TeslaSeiParser.GetVideoPresentationDurationSeconds(info.FullName);
+                lock (_videoDurationCacheLock)
+                {
+                    _videoDurationCache[cacheKey] = durationSeconds;
+                }
+
+                return durationSeconds;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Read exact video duration", ex);
+                return 0.0;
+            }
+        }
+
+        private bool HasExactSegmentDuration(TeslaClipSegment segment)
+        {
+            return segment?.CameraDurationSeconds != null &&
+                   segment.CameraDurationSeconds.Values.Any(duration => duration > 0.0);
+        }
+
+        private double GetSegmentTimelineDurationSeconds(TeslaClipSegment segment)
+        {
+            return ResolveSegmentTimelineDurationSeconds(segment, segment?.EstimatedDurationSeconds ?? 60.0);
+        }
+
+        private double ResolveSegmentTimelineDurationSeconds(TeslaClipSegment segment, double fallbackSeconds)
+        {
+            if (segment?.CameraDurationSeconds != null && segment.CameraDurationSeconds.Count > 0)
+            {
+                if (segment.CameraDurationSeconds.TryGetValue("front", out double frontDuration) && frontDuration > 0.0)
+                {
+                    return frontDuration;
+                }
+
+                double maxDuration = segment.CameraDurationSeconds.Values
+                    .Where(duration => duration > 0.0)
+                    .DefaultIfEmpty(0.0)
+                    .Max();
+
+                if (maxDuration > 0.0)
+                {
+                    return maxDuration;
+                }
+            }
+
+            if (fallbackSeconds > 0.0 && !double.IsNaN(fallbackSeconds) && !double.IsInfinity(fallbackSeconds))
+            {
+                return fallbackSeconds;
+            }
+
+            return 60.0;
+        }
+
+        private double GetSegmentCameraDurationSeconds(TeslaClipSegment segment, string camera, double fallbackSeconds)
+        {
+            if (segment?.CameraDurationSeconds != null &&
+                !string.IsNullOrWhiteSpace(camera) &&
+                segment.CameraDurationSeconds.TryGetValue(camera, out double cameraDuration) &&
+                cameraDuration > 0.0)
+            {
+                return cameraDuration;
+            }
+
+            return ResolveSegmentTimelineDurationSeconds(segment, fallbackSeconds);
+        }
+
+        private double GetClipTimelineDurationSeconds(IEnumerable<TeslaClipSegment> segments)
+        {
+            if (segments == null)
+            {
+                return 0.0;
+            }
+
+            double totalSeconds = 0.0;
+            foreach (TeslaClipSegment segment in segments)
+            {
+                totalSeconds += Math.Max(0.1, GetSegmentTimelineDurationSeconds(segment));
+            }
+
+            return totalSeconds;
         }
 
         private bool TryParseTeslaClipFileName(string filePath, string[] suffixes, out string timestamp, out string camera)
@@ -623,6 +775,16 @@ namespace TeslaCamViewer
                     : "Imported archive";
                 string durationText = FormatDuration(durationSeconds);
 
+                var archiveSegment = new TeslaClipSegment
+                {
+                    Timestamp = timestamp,
+                    Cameras = group.Value,
+                    EstimatedDurationSeconds = durationSeconds
+                };
+                PopulateSegmentExactDurations(archiveSegment);
+                durationSeconds = GetSegmentTimelineDurationSeconds(archiveSegment);
+                durationText = FormatDuration(durationSeconds);
+
                 clips.Add(new TeslaClip
                 {
                     Timestamp = timestamp,
@@ -634,12 +796,7 @@ namespace TeslaCamViewer
                     ClipTypeText = "Archive",
                     Segments = new List<TeslaClipSegment>
                     {
-                        new TeslaClipSegment
-                        {
-                            Timestamp = timestamp,
-                            Cameras = group.Value,
-                            EstimatedDurationSeconds = durationSeconds
-                        }
+                        archiveSegment
                     }
                 });
                 index++;
@@ -1164,7 +1321,8 @@ namespace TeslaCamViewer
                 }
             }
 
-            AutopilotTelemetrySummary summary = BuildSegmentTelemetrySummary(fileInfo.FullName, Math.Max(1.0, segment.EstimatedDurationSeconds), cancellationToken);
+            double segmentDurationSeconds = GetSegmentCameraDurationSeconds(segment, "front", GetSegmentTimelineDurationSeconds(segment));
+            AutopilotTelemetrySummary summary = BuildSegmentTelemetrySummary(fileInfo.FullName, Math.Max(1.0, segmentDurationSeconds), cancellationToken);
             lock (_clipTelemetrySummaryCacheLock)
             {
                 PruneClipTelemetrySummaryCacheForInsert();
@@ -1206,7 +1364,7 @@ namespace TeslaCamViewer
         private string GetClipTelemetrySummaryCachePath()
         {
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return Path.Combine(localAppData, "TeslaCamViewer", "TelemetrySummaryCache", "summary-cache-v1.json");
+            return Path.Combine(localAppData, "TeslaCamViewer", "TelemetrySummaryCache", "summary-cache-v2.json");
         }
 
         private void LoadClipTelemetrySummaryCache()
@@ -1661,14 +1819,14 @@ namespace TeslaCamViewer
             KillActiveFfmpegProcesses();
         }
 
-        private CancellationToken BeginNewDisengagementMarkerScan()
+        private CancellationToken BeginNewManualDrivingRangeScan()
         {
-            CancelDisengagementMarkerScan();
+            CancelManualDrivingRangeScan();
             _disengagementMarkerCancellation = new CancellationTokenSource();
             return _disengagementMarkerCancellation.Token;
         }
 
-        private void CancelDisengagementMarkerScan()
+        private void CancelManualDrivingRangeScan()
         {
             try
             {
@@ -1883,12 +2041,14 @@ namespace TeslaCamViewer
                 }
 
                 Directory.SetLastAccessTimeUtc(cacheDir, DateTime.UtcNow);
-                return new TeslaClipSegment
+                var stitchedSegment = new TeslaClipSegment
                 {
                     Timestamp = segments[0].Timestamp,
                     Cameras = stitchedCameras,
-                    EstimatedDurationSeconds = EstimateClipDurationSeconds(segments.Count)
+                    EstimatedDurationSeconds = GetClipTimelineDurationSeconds(segments)
                 };
+                PopulateSegmentExactDurations(stitchedSegment);
+                return stitchedSegment;
             }
             catch (Exception ex)
             {
@@ -1992,7 +2152,7 @@ namespace TeslaCamViewer
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                List<string> cameraFiles = new List<string>();
+                List<FfconcatInput> cameraFiles = new List<FfconcatInput>();
                 bool cameraComplete = true;
                 foreach (TeslaClipSegment segment in segments)
                 {
@@ -2006,7 +2166,11 @@ namespace TeslaCamViewer
                         break;
                     }
 
-                    cameraFiles.Add(cameraPath);
+                    cameraFiles.Add(new FfconcatInput
+                    {
+                        FilePath = cameraPath,
+                        DurationSeconds = GetSegmentCameraDurationSeconds(segment, camera, GetSegmentTimelineDurationSeconds(segment))
+                    });
                 }
 
                 if (!cameraComplete || cameraFiles.Count == 0)
@@ -2038,15 +2202,17 @@ namespace TeslaCamViewer
 
             EnforceStitchCacheSize(cacheRoot, cacheDir);
 
-            return new TeslaClipSegment
+            var result = new TeslaClipSegment
             {
                 Timestamp = segments[0].Timestamp,
                 Cameras = stitchedCameras,
-                EstimatedDurationSeconds = EstimateClipDurationSeconds(segments.Count)
+                EstimatedDurationSeconds = GetClipTimelineDurationSeconds(segments)
             };
+            PopulateSegmentExactDurations(result);
+            return result;
         }
 
-        private bool StitchCameraFiles(string ffmpegPath, List<string> inputFiles, string outputPath, string clipKey, string camera, CancellationToken cancellationToken)
+        private bool StitchCameraFiles(string ffmpegPath, List<FfconcatInput> inputFiles, string outputPath, string clipKey, string camera, CancellationToken cancellationToken)
         {
             try
             {
@@ -2070,10 +2236,14 @@ namespace TeslaCamViewer
                 try
                 {
                     var lines = new List<string> { "ffconcat version 1.0" };
-                    foreach (string inputFile in inputFiles)
+                    foreach (FfconcatInput input in inputFiles)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        lines.Add($"file '{EscapeFfconcatPath(inputFile)}'");
+                        lines.Add($"file '{EscapeFfconcatPath(input.FilePath)}'");
+                        if (input.DurationSeconds > 0.0)
+                        {
+                            lines.Add($"duration {FormatFfconcatSeconds(input.DurationSeconds)}");
+                        }
                     }
 
                     File.WriteAllLines(concatPath, lines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -2217,6 +2387,8 @@ namespace TeslaCamViewer
             using (SHA256 sha = SHA256.Create())
             {
                 var builder = new StringBuilder();
+                builder.Append("stitch-exact-duration-v2");
+                builder.Append('|');
                 builder.Append(clip?.Category ?? "");
                 builder.Append('|');
                 builder.Append(clip?.Timestamp ?? "");
@@ -2253,6 +2425,16 @@ namespace TeslaCamViewer
         private string EscapeFfconcatPath(string path)
         {
             return path.Replace("\\", "/").Replace("'", "'\\''");
+        }
+
+        private string FormatFfconcatSeconds(double seconds)
+        {
+            if (double.IsNaN(seconds) || double.IsInfinity(seconds))
+            {
+                seconds = 0.0;
+            }
+
+            return Math.Max(0.0, seconds).ToString("0.######", CultureInfo.InvariantCulture);
         }
 
         private string[] GetCameraOrder()
@@ -2527,11 +2709,11 @@ namespace TeslaCamViewer
         {
             int clipVersion = ++_clipSelectionVersion;
             CancellationToken stitchToken = BeginNewStitchOperation();
-            CancellationToken markerToken = BeginNewDisengagementMarkerScan();
+            CancellationToken markerToken = BeginNewManualDrivingRangeScan();
             SetStitchActivity(false);
             SetPlaybackActivity(false);
             ResetExportMarkers();
-            ResetDisengagementMarkers();
+            ResetManualDrivingRanges();
             try
             {
                 _activeClip = clip;
@@ -2554,7 +2736,7 @@ namespace TeslaCamViewer
 
                 _activePlaybackSegments = playbackSegments;
                 InitializeClipTimeline(playbackSegments);
-                QueueDisengagementMarkersForClip(clip, sortedSegments, clipVersion, markerToken);
+                QueueManualDrivingRangesForClip(clip, sortedSegments, clipVersion, markerToken);
 
                 if (playbackSegments.Count > 0)
                 {
@@ -2664,7 +2846,10 @@ namespace TeslaCamViewer
                 }
 
                 var duration = GetNaturalDuration(MainPlayer);
-                double durationSecs = duration.TotalSeconds > 0.0 ? duration.TotalSeconds : 60.0;
+                double exactSegmentDurationSecs = GetSegmentTimelineDurationSeconds(segment);
+                double durationSecs = exactSegmentDurationSecs > 0.0
+                    ? exactSegmentDurationSecs
+                    : duration.TotalSeconds > 0.0 ? duration.TotalSeconds : 60.0;
                 UpdateActiveSegmentDuration(durationSecs);
                 seekSeconds = Math.Max(0.0, Math.Min(seekSeconds, durationSecs));
                 segmentStartSeconds = GetActiveSegmentStartSeconds();
@@ -2697,10 +2882,10 @@ namespace TeslaCamViewer
                 ResetHUD();
 
                 string frontPath = segment.Cameras["front"];
-                double telemetryDurationSecs = durationSecs;
+                double telemetryDurationSecs = GetSegmentCameraDurationSeconds(segment, "front", durationSecs);
                 var telemetryPlayer = GetPlayerForCameraAngle("front");
                 var telemetryDuration = telemetryPlayer?.MediaPlayer?.PlaybackSession?.NaturalDuration ?? TimeSpan.Zero;
-                if (telemetryDuration.TotalSeconds > 0.0)
+                if (!HasExactSegmentDuration(segment) && telemetryDuration.TotalSeconds > 0.0)
                 {
                     telemetryDurationSecs = telemetryDuration.TotalSeconds;
                 }
@@ -3324,7 +3509,7 @@ namespace TeslaCamViewer
         {
             _activeSegmentIndex = -1;
             _activeSegmentDurations = sortedSegments.Select(segment =>
-                segment.EstimatedDurationSeconds > 0.0 ? segment.EstimatedDurationSeconds : 60.0).ToList();
+                GetSegmentTimelineDurationSeconds(segment)).ToList();
             RebuildActiveSegmentStarts();
             TimelineSlider.Maximum = Math.Max(0.0, _activeClipDurationSeconds);
             SetTimelineValue(0);
@@ -3351,6 +3536,7 @@ namespace TeslaCamViewer
         {
             if (_activeSegmentIndex < 0 || _activeSegmentIndex >= _activeSegmentDurations.Count) return;
             if (durationSecs <= 0.0 || double.IsNaN(durationSecs)) return;
+            if (HasExactSegmentDuration(_activeSegment)) return;
 
             if (Math.Abs(_activeSegmentDurations[_activeSegmentIndex] - durationSecs) > 0.1)
             {
@@ -3387,8 +3573,8 @@ namespace TeslaCamViewer
 
             for (int i = 0; i < _activePlaybackSegments.Count; i++)
             {
-                double start = i < _activeSegmentStarts.Count ? _activeSegmentStarts[i] : i * 60.0;
-                double duration = i < _activeSegmentDurations.Count ? _activeSegmentDurations[i] : 60.0;
+                double start = i < _activeSegmentStarts.Count ? _activeSegmentStarts[i] : GetFallbackSegmentStartSeconds(_activePlaybackSegments, i);
+                double duration = i < _activeSegmentDurations.Count ? _activeSegmentDurations[i] : GetSegmentTimelineDurationSeconds(_activePlaybackSegments[i]);
                 double end = start + Math.Max(0.1, duration);
 
                 if (target < end || i == _activePlaybackSegments.Count - 1)
@@ -3398,7 +3584,7 @@ namespace TeslaCamViewer
             }
 
             int lastIndex = _activePlaybackSegments.Count - 1;
-            double lastDuration = lastIndex < _activeSegmentDurations.Count ? _activeSegmentDurations[lastIndex] : 60.0;
+            double lastDuration = lastIndex < _activeSegmentDurations.Count ? _activeSegmentDurations[lastIndex] : GetSegmentTimelineDurationSeconds(_activePlaybackSegments[lastIndex]);
             return (lastIndex, lastDuration);
         }
 
@@ -3518,18 +3704,17 @@ namespace TeslaCamViewer
             UpdateExportMarkerVisuals(trackLeft, trackWidth);
         }
 
-        private void QueueDisengagementMarkersForClip(TeslaClip clip, List<TeslaClipSegment> sortedSegments, int clipVersion, CancellationToken cancellationToken)
+        private void QueueManualDrivingRangesForClip(TeslaClip clip, List<TeslaClipSegment> sortedSegments, int clipVersion, CancellationToken cancellationToken)
         {
             if (clip == null || sortedSegments == null || sortedSegments.Count == 0)
             {
-                ResetDisengagementMarkers();
+                ResetManualDrivingRanges();
                 return;
             }
 
             _ = Task.Run(() =>
             {
-                var markerSeconds = new List<double>();
-                bool? previousSegmentEndedFsd = null;
+                var manualRanges = new List<TimelineRange>();
                 double segmentStartSeconds = 0.0;
 
                 try
@@ -3538,9 +3723,7 @@ namespace TeslaCamViewer
                     {
                         cancellationToken.ThrowIfCancellationRequested();
 
-                        double segmentDurationSeconds = segment?.EstimatedDurationSeconds > 0.0
-                            ? segment.EstimatedDurationSeconds
-                            : 60.0;
+                        double segmentDurationSeconds = GetSegmentTimelineDurationSeconds(segment);
                         segmentDurationSeconds = Math.Max(0.1, segmentDurationSeconds);
 
                         if (segment?.Cameras != null &&
@@ -3548,33 +3731,21 @@ namespace TeslaCamViewer
                             !string.IsNullOrWhiteSpace(frontPath) &&
                             File.Exists(frontPath))
                         {
-                            AutopilotDisengagementMarkers markers = TeslaSeiParser.ExtractAutopilotDisengagementMarkers(
+                            AutopilotManualDrivingTimeline manualTimeline = TeslaSeiParser.ExtractAutopilotManualDrivingTimeline(
                                 frontPath,
-                                segmentDurationSeconds,
+                                GetSegmentCameraDurationSeconds(segment, "front", segmentDurationSeconds),
                                 cancellationToken);
 
-                            if (markers != null && markers.TelemetryRecordCount > 0)
+                            if (manualTimeline != null && manualTimeline.TelemetryRecordCount > 0)
                             {
-                                if (previousSegmentEndedFsd == true && !markers.FirstIsFsdEngaged)
+                                foreach (TimelineRange range in manualTimeline.ManualRanges)
                                 {
-                                    AddDisengagementMarkerSecond(markerSeconds, segmentStartSeconds);
+                                    AddTimelineRange(
+                                        manualRanges,
+                                        segmentStartSeconds + range.StartSeconds,
+                                        segmentStartSeconds + range.EndSeconds);
                                 }
-
-                                foreach (double offset in markers.OffsetsSeconds)
-                                {
-                                    AddDisengagementMarkerSecond(markerSeconds, segmentStartSeconds + offset);
-                                }
-
-                                previousSegmentEndedFsd = markers.LastIsFsdEngaged;
                             }
-                            else
-                            {
-                                previousSegmentEndedFsd = null;
-                            }
-                        }
-                        else
-                        {
-                            previousSegmentEndedFsd = null;
                         }
 
                         segmentStartSeconds += segmentDurationSeconds;
@@ -3595,7 +3766,7 @@ namespace TeslaCamViewer
                             return;
                         }
 
-                        SetDisengagementMarkers(markerSeconds);
+                        SetManualDrivingRanges(manualRanges);
                     });
                 }
                 catch (OperationCanceledException)
@@ -3605,40 +3776,62 @@ namespace TeslaCamViewer
                 {
                     if (!_isWindowClosing)
                     {
-                        CrashLogger.Log("Disengagement marker scan", ex);
+                        CrashLogger.Log("Manual driving range scan", ex);
                     }
                 }
             }, cancellationToken);
         }
 
-        private static void AddDisengagementMarkerSecond(List<double> markerSeconds, double seconds)
+        private static void AddTimelineRange(List<TimelineRange> ranges, double startSeconds, double endSeconds)
         {
-            if (markerSeconds == null || double.IsNaN(seconds) || double.IsInfinity(seconds))
+            if (ranges == null ||
+                double.IsNaN(startSeconds) ||
+                double.IsNaN(endSeconds) ||
+                double.IsInfinity(startSeconds) ||
+                double.IsInfinity(endSeconds))
             {
                 return;
             }
 
-            seconds = Math.Max(0.0, seconds);
-            if (markerSeconds.Count == 0 || Math.Abs(markerSeconds[markerSeconds.Count - 1] - seconds) > 0.15)
+            startSeconds = Math.Max(0.0, startSeconds);
+            endSeconds = Math.Max(startSeconds, endSeconds);
+            if (endSeconds - startSeconds <= 0.02)
             {
-                markerSeconds.Add(seconds);
+                return;
             }
+
+            if (ranges.Count > 0)
+            {
+                TimelineRange previous = ranges[ranges.Count - 1];
+                if (startSeconds <= previous.EndSeconds + 0.15)
+                {
+                    ranges[ranges.Count - 1] = new TimelineRange(previous.StartSeconds, Math.Max(previous.EndSeconds, endSeconds));
+                    return;
+                }
+            }
+
+            ranges.Add(new TimelineRange(startSeconds, endSeconds));
         }
 
-        private void SetDisengagementMarkers(List<double> markerSeconds)
+        private void SetManualDrivingRanges(List<TimelineRange> ranges)
         {
-            _activeDisengagementMarkerSeconds = markerSeconds
-                ?.Where(seconds => !double.IsNaN(seconds) && !double.IsInfinity(seconds))
-                .OrderBy(seconds => seconds)
-                .ToList() ?? new List<double>();
+            _activeManualDrivingRanges = ranges
+                ?.Where(range =>
+                    !double.IsNaN(range.StartSeconds) &&
+                    !double.IsInfinity(range.StartSeconds) &&
+                    !double.IsNaN(range.EndSeconds) &&
+                    !double.IsInfinity(range.EndSeconds) &&
+                    range.EndSeconds > range.StartSeconds)
+                .OrderBy(range => range.StartSeconds)
+                .ToList() ?? new List<TimelineRange>();
 
-            RebuildDisengagementMarkerElements();
+            RebuildManualDrivingRangeElements();
             UpdateTimelineScrubberVisual();
         }
 
-        private void ResetDisengagementMarkers()
+        private void ResetManualDrivingRanges()
         {
-            _activeDisengagementMarkerSeconds.Clear();
+            _activeManualDrivingRanges.Clear();
             if (TimelineDisengagementMarkersCanvas != null)
             {
                 TimelineDisengagementMarkersCanvas.Children.Clear();
@@ -3646,7 +3839,7 @@ namespace TeslaCamViewer
             }
         }
 
-        private void RebuildDisengagementMarkerElements()
+        private void RebuildManualDrivingRangeElements()
         {
             if (TimelineDisengagementMarkersCanvas == null)
             {
@@ -3654,25 +3847,24 @@ namespace TeslaCamViewer
             }
 
             TimelineDisengagementMarkersCanvas.Children.Clear();
-            foreach (double seconds in _activeDisengagementMarkerSeconds)
+            foreach (TimelineRange range in _activeManualDrivingRanges)
             {
                 var marker = new Border
                 {
-                    Width = 4,
-                    Height = 16,
-                    CornerRadius = new CornerRadius(2),
-                    Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 214, 10)),
-                    BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(170, 255, 255, 255)),
+                    Height = 10,
+                    CornerRadius = new CornerRadius(5),
+                    Background = new SolidColorBrush(Windows.UI.Color.FromArgb(178, 255, 214, 10)),
+                    BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(185, 255, 242, 124)),
                     BorderThickness = new Thickness(1),
-                    Opacity = 0.98,
-                    Tag = seconds,
+                    Opacity = 0.95,
+                    Tag = range,
                     IsHitTestVisible = false
                 };
 
                 TimelineDisengagementMarkersCanvas.Children.Add(marker);
             }
 
-            TimelineDisengagementMarkersCanvas.Visibility = _activeDisengagementMarkerSeconds.Count > 0
+            TimelineDisengagementMarkersCanvas.Visibility = _activeManualDrivingRanges.Count > 0
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         }
@@ -3696,13 +3888,21 @@ namespace TeslaCamViewer
 
             foreach (UIElement element in TimelineDisengagementMarkersCanvas.Children)
             {
-                if (element is FrameworkElement marker && marker.Tag is double seconds)
+                if (element is FrameworkElement marker && marker.Tag is TimelineRange rangeSeconds)
                 {
-                    double progress = Math.Max(0.0, Math.Min(1.0, seconds / range));
-                    double markerWidth = marker.ActualWidth > 0.0 ? marker.ActualWidth : marker.Width;
+                    double startProgress = Math.Max(0.0, Math.Min(1.0, rangeSeconds.StartSeconds / range));
+                    double endProgress = Math.Max(0.0, Math.Min(1.0, rangeSeconds.EndSeconds / range));
+                    double left = trackLeft + (startProgress * trackWidth);
+                    double right = trackLeft + (endProgress * trackWidth);
+                    double width = Math.Max(3.0, right - left);
                     double markerHeight = marker.ActualHeight > 0.0 ? marker.ActualHeight : marker.Height;
+                    if (double.IsNaN(markerHeight) || markerHeight <= 0.0)
+                    {
+                        markerHeight = 10.0;
+                    }
 
-                    Canvas.SetLeft(marker, trackLeft + (progress * trackWidth) - (markerWidth / 2.0));
+                    marker.Width = width;
+                    Canvas.SetLeft(marker, left);
                     Canvas.SetTop(marker, Math.Max(0.0, (hostHeight - markerHeight) / 2.0));
                 }
             }
@@ -4032,8 +4232,9 @@ namespace TeslaCamViewer
                     continue;
                 }
 
-                double segmentStart = i < segmentStarts.Count ? segmentStarts[i] : i * 60.0;
-                double segmentDuration = i < segmentDurations.Count ? segmentDurations[i] : 60.0;
+                double segmentStart = i < segmentStarts.Count ? segmentStarts[i] : GetFallbackSegmentStartSeconds(playbackSegments, i);
+                double segmentDuration = i < segmentDurations.Count ? segmentDurations[i] : GetSegmentTimelineDurationSeconds(segment);
+                double cameraDuration = GetSegmentCameraDurationSeconds(segment, camera, segmentDuration);
                 double segmentEnd = segmentStart + Math.Max(0.1, segmentDuration);
                 double overlapStart = Math.Max(exportStart, segmentStart);
                 double overlapEnd = Math.Min(exportEnd, segmentEnd);
@@ -4042,15 +4243,43 @@ namespace TeslaCamViewer
                     continue;
                 }
 
+                double inSeconds = Math.Max(0.0, overlapStart - segmentStart);
+                double outSeconds = Math.Max(0.0, overlapEnd - segmentStart);
+                if (cameraDuration > 0.0)
+                {
+                    if (inSeconds >= cameraDuration)
+                    {
+                        continue;
+                    }
+
+                    outSeconds = Math.Min(outSeconds, cameraDuration);
+                }
+
+                if (outSeconds <= inSeconds)
+                {
+                    continue;
+                }
+
                 slices.Add(new ExportSlice
                 {
                     FilePath = path,
-                    InSeconds = Math.Max(0.0, overlapStart - segmentStart),
-                    OutSeconds = Math.Max(0.0, overlapEnd - segmentStart)
+                    InSeconds = inSeconds,
+                    OutSeconds = outSeconds
                 });
             }
 
             return slices;
+        }
+
+        private double GetFallbackSegmentStartSeconds(List<TeslaClipSegment> playbackSegments, int segmentIndex)
+        {
+            double startSeconds = 0.0;
+            for (int i = 0; i < segmentIndex && i < playbackSegments.Count; i++)
+            {
+                startSeconds += Math.Max(0.1, GetSegmentTimelineDurationSeconds(playbackSegments[i]));
+            }
+
+            return startSeconds;
         }
 
         private List<CameraExportPlan> BuildAllViewExportPlans(double exportStart, double exportEnd, List<TeslaClipSegment> playbackSegments, List<double> segmentStarts, List<double> segmentDurations)
@@ -4125,8 +4354,8 @@ namespace TeslaCamViewer
                 foreach (ExportSlice slice in slices)
                 {
                     lines.Add($"file '{EscapeFfconcatPath(slice.FilePath)}'");
-                    lines.Add($"inpoint {slice.InSeconds.ToString("0.###", CultureInfo.InvariantCulture)}");
-                    lines.Add($"outpoint {slice.OutSeconds.ToString("0.###", CultureInfo.InvariantCulture)}");
+                    lines.Add($"inpoint {FormatFfconcatSeconds(slice.InSeconds)}");
+                    lines.Add($"outpoint {FormatFfconcatSeconds(slice.OutSeconds)}");
                 }
 
                 File.WriteAllLines(concatPath, lines, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -4316,6 +4545,12 @@ namespace TeslaCamViewer
             public string FilePath { get; set; }
             public double InSeconds { get; set; }
             public double OutSeconds { get; set; }
+        }
+
+        private sealed class FfconcatInput
+        {
+            public string FilePath { get; set; }
+            public double DurationSeconds { get; set; }
         }
 
         private sealed class CameraExportPlan
@@ -5360,7 +5595,7 @@ namespace TeslaCamViewer
             var sessionSegments = segments.OrderBy(s => s.Timestamp).ToList();
             var first = sessionSegments[0];
             var last = sessionSegments[sessionSegments.Count - 1];
-            var display = BuildClipDisplayMetadata(first.Timestamp, last.Timestamp, sessionSegments.Count);
+            var display = BuildClipDisplayMetadata(first.Timestamp, last.Timestamp, sessionSegments);
 
             return new TeslaClip
             {
@@ -5407,7 +5642,32 @@ namespace TeslaCamViewer
 
         private ClipDisplayMetadata BuildClipDisplayMetadata(string firstTimestamp, string lastTimestamp, int segmentCount, string suffix = null)
         {
-            string duration = FormatDuration(EstimateClipDurationSeconds(segmentCount));
+            double durationSeconds = EstimateClipDurationSeconds(segmentCount);
+            return BuildClipDisplayMetadata(firstTimestamp, lastTimestamp, durationSeconds, 60.0, suffix);
+        }
+
+        private ClipDisplayMetadata BuildClipDisplayMetadata(string firstTimestamp, string lastTimestamp, IEnumerable<TeslaClipSegment> segments, string suffix = null)
+        {
+            List<TeslaClipSegment> segmentList = segments?.OrderBy(segment => segment.Timestamp).ToList() ?? new List<TeslaClipSegment>();
+            double durationSeconds = segmentList.Count > 0
+                ? GetClipTimelineDurationSeconds(segmentList)
+                : EstimateClipDurationSeconds(1);
+            double lastSegmentDurationSeconds = segmentList.Count > 0
+                ? GetSegmentTimelineDurationSeconds(segmentList[segmentList.Count - 1])
+                : 60.0;
+
+            return BuildClipDisplayMetadata(firstTimestamp, lastTimestamp, durationSeconds, lastSegmentDurationSeconds, suffix);
+        }
+
+        private ClipDisplayMetadata BuildClipDisplayMetadata(string firstTimestamp, string lastTimestamp, double durationSeconds, double lastSegmentDurationSeconds, string suffix = null)
+        {
+            durationSeconds = durationSeconds > 0.0 && !double.IsNaN(durationSeconds) && !double.IsInfinity(durationSeconds)
+                ? durationSeconds
+                : 60.0;
+            lastSegmentDurationSeconds = lastSegmentDurationSeconds > 0.0 && !double.IsNaN(lastSegmentDurationSeconds) && !double.IsInfinity(lastSegmentDurationSeconds)
+                ? lastSegmentDurationSeconds
+                : 60.0;
+            string duration = FormatDuration(durationSeconds);
             string typeText = string.IsNullOrWhiteSpace(suffix) ? "Recent" : suffix;
 
             if (!TryParseTeslaTimestamp(firstTimestamp, out DateTime firstLocal) ||
@@ -5425,7 +5685,7 @@ namespace TeslaCamViewer
                 };
             }
 
-            DateTime endLocal = lastLocal.AddSeconds(60.0);
+            DateTime endLocal = lastLocal.AddSeconds(lastSegmentDurationSeconds);
             string dateText = firstLocal.Date == endLocal.Date
                 ? FormatLocalDate(firstLocal)
                 : $"{FormatLocalDate(firstLocal)} - {FormatLocalDate(endLocal)}";
@@ -5547,6 +5807,7 @@ namespace TeslaCamViewer
     {
         public string Timestamp { get; set; }
         public Dictionary<string, string> Cameras { get; set; } = new Dictionary<string, string>();
+        public Dictionary<string, double> CameraDurationSeconds { get; set; } = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         public double EstimatedDurationSeconds { get; set; } = 60.0;
     }
 
@@ -5672,14 +5933,26 @@ namespace TeslaCamViewer
         public bool LastIsFsdEngaged { get; set; }
     }
 
-    public sealed class AutopilotDisengagementMarkers
+    public readonly struct TimelineRange
     {
-        public static readonly AutopilotDisengagementMarkers Empty = new AutopilotDisengagementMarkers();
+        public TimelineRange(double startSeconds, double endSeconds)
+        {
+            StartSeconds = startSeconds;
+            EndSeconds = endSeconds;
+        }
+
+        public double StartSeconds { get; }
+        public double EndSeconds { get; }
+    }
+
+    public sealed class AutopilotManualDrivingTimeline
+    {
+        public static readonly AutopilotManualDrivingTimeline Empty = new AutopilotManualDrivingTimeline();
 
         public int TelemetryRecordCount { get; set; }
-        public bool FirstIsFsdEngaged { get; set; }
-        public bool LastIsFsdEngaged { get; set; }
-        public List<double> OffsetsSeconds { get; set; } = new List<double>();
+        public bool FirstIsManualDriving { get; set; }
+        public bool LastIsManualDriving { get; set; }
+        public List<TimelineRange> ManualRanges { get; set; } = new List<TimelineRange>();
     }
 
     // --- 100% NATIVE C# TELEMETRY PROTOBUF DECODER ---
@@ -5725,7 +5998,22 @@ namespace TeslaCamViewer
             }
         }
 
-        public static AutopilotDisengagementMarkers ExtractAutopilotDisengagementMarkers(string filePath, double durationSeconds = 60.0, CancellationToken cancellationToken = default)
+        public static double GetVideoPresentationDurationSeconds(string filePath)
+        {
+            try
+            {
+                Mp4TimingInfo timing = ReadMp4TimingInfo(filePath);
+                Mp4TrackInfo videoTrack = timing.GetPreferredVideoTrack();
+                return GetTrackPresentationDurationSeconds(videoTrack, timing.MovieTimeScale);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Error reading MP4 duration: " + ex.Message);
+                return 0.0;
+            }
+        }
+
+        public static AutopilotManualDrivingTimeline ExtractAutopilotManualDrivingTimeline(string filePath, double durationSeconds = 60.0, CancellationToken cancellationToken = default)
         {
             var samples = new List<AutopilotTelemetrySample>();
 
@@ -5738,7 +6026,7 @@ namespace TeslaCamViewer
                     NormalizeAutopilotSampleOffsets(samples, durationSeconds);
                 }
 
-                return BuildAutopilotDisengagementMarkers(samples, durationSeconds);
+                return BuildAutopilotManualDrivingTimeline(samples, durationSeconds);
             }
             catch (OperationCanceledException)
             {
@@ -5746,8 +6034,8 @@ namespace TeslaCamViewer
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("Error parsing autopilot disengagement markers: " + ex.Message);
-                return AutopilotDisengagementMarkers.Empty;
+                Debug.WriteLine("Error parsing autopilot manual driving timeline: " + ex.Message);
+                return AutopilotManualDrivingTimeline.Empty;
             }
         }
 
@@ -6118,45 +6406,68 @@ namespace TeslaCamViewer
             return summary;
         }
 
-        private static AutopilotDisengagementMarkers BuildAutopilotDisengagementMarkers(List<AutopilotTelemetrySample> samples, double durationSeconds)
+        private static AutopilotManualDrivingTimeline BuildAutopilotManualDrivingTimeline(List<AutopilotTelemetrySample> samples, double durationSeconds)
         {
             if (samples == null || samples.Count == 0)
             {
-                return AutopilotDisengagementMarkers.Empty;
+                return AutopilotManualDrivingTimeline.Empty;
             }
 
             double duration = durationSeconds > 0.0 && !double.IsNaN(durationSeconds) && !double.IsInfinity(durationSeconds)
                 ? durationSeconds
                 : 60.0;
-            var markers = new AutopilotDisengagementMarkers();
-            bool? previousIsFsdEngaged = null;
+            var timeline = new AutopilotManualDrivingTimeline();
+            double fallbackIntervalSeconds = duration / samples.Count;
 
             for (int i = 0; i < samples.Count; i++)
             {
                 AutopilotTelemetrySample sample = samples[i];
-                bool isFsdEngaged = sample.AutopilotState == 1;
+                bool isManualDriving = sample.AutopilotState != 1;
                 if (i == 0)
                 {
-                    markers.FirstIsFsdEngaged = isFsdEngaged;
+                    timeline.FirstIsManualDriving = isManualDriving;
                 }
 
-                markers.LastIsFsdEngaged = isFsdEngaged;
-                markers.TelemetryRecordCount++;
+                timeline.LastIsManualDriving = isManualDriving;
+                timeline.TelemetryRecordCount++;
 
-                if (previousIsFsdEngaged == true && !isFsdEngaged)
+                double intervalStart = i == 0 ? 0.0 : ClampTelemetryOffset(sample.OffsetSec, duration);
+                double intervalEnd = i + 1 < samples.Count
+                    ? ClampTelemetryOffset(samples[i + 1].OffsetSec, duration)
+                    : duration;
+
+                if (intervalEnd <= intervalStart)
                 {
-                    double offsetSeconds = ClampTelemetryOffset(sample.OffsetSec, duration);
-                    if (markers.OffsetsSeconds.Count == 0 ||
-                        Math.Abs(markers.OffsetsSeconds[markers.OffsetsSeconds.Count - 1] - offsetSeconds) > 0.15)
-                    {
-                        markers.OffsetsSeconds.Add(offsetSeconds);
-                    }
+                    intervalEnd = Math.Min(duration, intervalStart + fallbackIntervalSeconds);
                 }
 
-                previousIsFsdEngaged = isFsdEngaged;
+                if (isManualDriving)
+                {
+                    AddManualTimelineRange(timeline.ManualRanges, intervalStart, intervalEnd);
+                }
             }
 
-            return markers;
+            return timeline;
+        }
+
+        private static void AddManualTimelineRange(List<TimelineRange> ranges, double startSeconds, double endSeconds)
+        {
+            if (ranges == null || endSeconds - startSeconds <= 0.02)
+            {
+                return;
+            }
+
+            if (ranges.Count > 0)
+            {
+                TimelineRange previous = ranges[ranges.Count - 1];
+                if (startSeconds <= previous.EndSeconds + 0.15)
+                {
+                    ranges[ranges.Count - 1] = new TimelineRange(previous.StartSeconds, Math.Max(previous.EndSeconds, endSeconds));
+                    return;
+                }
+            }
+
+            ranges.Add(new TimelineRange(startSeconds, endSeconds));
         }
 
         private static void NormalizeAutopilotSampleOffsets(List<AutopilotTelemetrySample> samples, double durationSeconds)
@@ -6375,6 +6686,44 @@ namespace TeslaCamViewer
             }
 
             return Math.Max(0.0, mediaSeconds);
+        }
+
+        private static double GetTrackPresentationDurationSeconds(Mp4TrackInfo track, uint movieTimeScale)
+        {
+            if (track == null || track.TimeScale == 0)
+            {
+                return 0.0;
+            }
+
+            if (track.EditList.Count > 0 && movieTimeScale > 0)
+            {
+                double editDurationSeconds = 0.0;
+                foreach (EditListEntry edit in track.EditList)
+                {
+                    if (edit.SegmentDuration > 0)
+                    {
+                        editDurationSeconds += edit.SegmentDuration / (double)movieTimeScale;
+                    }
+                }
+
+                if (editDurationSeconds > 0.0)
+                {
+                    return editDurationSeconds;
+                }
+            }
+
+            if (track.SampleDeltas.Count == 0)
+            {
+                return 0.0;
+            }
+
+            double mediaTicks = 0.0;
+            foreach (uint sampleDelta in track.SampleDeltas)
+            {
+                mediaTicks += sampleDelta;
+            }
+
+            return mediaTicks / track.TimeScale;
         }
 
         private static SeiMetadata DecodeTelemetryNal(byte[] nal)
