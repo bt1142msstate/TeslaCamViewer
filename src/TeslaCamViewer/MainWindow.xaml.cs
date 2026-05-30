@@ -121,6 +121,7 @@ namespace TeslaCamViewer
         private const int ClipTelemetrySummaryMaxParallelism = 6;
         private const int ClipTelemetrySummaryCacheMaxEntries = 5000;
         private const int ClipTelemetrySummaryCacheSaveDelayMs = 1500;
+        private const int StitchCacheMaxParallelCameraCopies = 2;
         private const long StitchCacheMaxBytes = 64L * 1024L * 1024L * 1024L;
         private const long StitchCacheMinFreeBytes = 12L * 1024L * 1024L * 1024L;
         private const string UpdateRepositoryUrl = "https://github.com/bt1142msstate/TeslaCamViewer";
@@ -2816,7 +2817,7 @@ namespace TeslaCamViewer
             string cacheDir = Path.Combine(cacheRoot, clipKey);
             Directory.CreateDirectory(cacheDir);
 
-            var stitchedCameras = new Dictionary<string, string>();
+            var stitchJobs = new List<CameraStitchJob>();
             foreach (string camera in GetCameraOrder())
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -2849,16 +2850,15 @@ namespace TeslaCamViewer
                 }
 
                 string outputPath = Path.Combine(cacheDir, $"{camera}.mp4");
-                if (StitchCameraFiles(ffmpegPath, cameraFiles, outputPath, clipKey, camera, cancellationToken))
+                stitchJobs.Add(new CameraStitchJob
                 {
-                    stitchedCameras[camera] = outputPath;
-                }
-                else if (camera == "front")
-                {
-                    return null;
-                }
+                    Camera = camera,
+                    InputFiles = cameraFiles,
+                    OutputPath = outputPath
+                });
             }
 
+            Dictionary<string, string> stitchedCameras = StitchCameraJobs(ffmpegPath, stitchJobs, clipKey, cancellationToken);
             if (!stitchedCameras.ContainsKey("front"))
             {
                 return null;
@@ -2880,6 +2880,95 @@ namespace TeslaCamViewer
             };
             PopulateSegmentExactDurations(result);
             return result;
+        }
+
+        private Dictionary<string, string> StitchCameraJobs(string ffmpegPath, List<CameraStitchJob> stitchJobs, string clipKey, CancellationToken cancellationToken)
+        {
+            var stitchedCameras = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (stitchJobs == null || stitchJobs.Count == 0)
+            {
+                return stitchedCameras;
+            }
+
+            int maxParallelism = GetStitchCameraParallelism(stitchJobs);
+            if (maxParallelism <= 1)
+            {
+                foreach (CameraStitchJob job in stitchJobs)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (StitchCameraFiles(ffmpegPath, job.InputFiles, job.OutputPath, clipKey, job.Camera, cancellationToken))
+                    {
+                        stitchedCameras[job.Camera] = job.OutputPath;
+                    }
+                    else if (string.Equals(job.Camera, "front", StringComparison.OrdinalIgnoreCase))
+                    {
+                        break;
+                    }
+                }
+
+                return stitchedCameras;
+            }
+
+            object gate = new object();
+            var parallelOptions = new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = maxParallelism
+            };
+
+            Parallel.ForEach(stitchJobs, parallelOptions, job =>
+            {
+                parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+                if (StitchCameraFiles(ffmpegPath, job.InputFiles, job.OutputPath, clipKey, job.Camera, parallelOptions.CancellationToken))
+                {
+                    lock (gate)
+                    {
+                        stitchedCameras[job.Camera] = job.OutputPath;
+                    }
+                }
+            });
+
+            return stitchedCameras;
+        }
+
+        private int GetStitchCameraParallelism(List<CameraStitchJob> stitchJobs)
+        {
+            if (stitchJobs == null || stitchJobs.Count <= 1 || IsAnyStitchInputOnRemovableDrive(stitchJobs))
+            {
+                return 1;
+            }
+
+            int processorBound = Math.Max(1, Environment.ProcessorCount / 2);
+            return Math.Max(1, Math.Min(stitchJobs.Count, Math.Min(StitchCacheMaxParallelCameraCopies, processorBound)));
+        }
+
+        private bool IsAnyStitchInputOnRemovableDrive(List<CameraStitchJob> stitchJobs)
+        {
+            try
+            {
+                foreach (CameraStitchJob job in stitchJobs ?? new List<CameraStitchJob>())
+                {
+                    foreach (FfconcatInput input in job.InputFiles ?? new List<FfconcatInput>())
+                    {
+                        string root = Path.GetPathRoot(input.FilePath);
+                        if (string.IsNullOrWhiteSpace(root))
+                        {
+                            continue;
+                        }
+
+                        if (new DriveInfo(root).DriveType == DriveType.Removable)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private bool StitchCameraFiles(string ffmpegPath, List<FfconcatInput> inputFiles, string outputPath, string clipKey, string camera, CancellationToken cancellationToken)
@@ -2941,8 +3030,6 @@ namespace TeslaCamViewer
                     psi.ArgumentList.Add("0:v:0");
                     psi.ArgumentList.Add("-c");
                     psi.ArgumentList.Add("copy");
-                    psi.ArgumentList.Add("-movflags");
-                    psi.ArgumentList.Add("+faststart");
                     psi.ArgumentList.Add(tempOutputPath);
 
                     using (var process = new Process { StartInfo = psi })
@@ -5309,6 +5396,13 @@ namespace TeslaCamViewer
         {
             public string FilePath { get; set; }
             public double DurationSeconds { get; set; }
+        }
+
+        private sealed class CameraStitchJob
+        {
+            public string Camera { get; set; }
+            public List<FfconcatInput> InputFiles { get; set; } = new List<FfconcatInput>();
+            public string OutputPath { get; set; }
         }
 
         private sealed class CameraExportPlan
