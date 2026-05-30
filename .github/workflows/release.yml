@@ -203,7 +203,7 @@ jobs:
           1. Download `TESLA-Cam-win-x64-Setup.exe`.
           2. Run it. The one-click setup installs the app under your user profile, creates shortcuts, and launches TESLA Cam.
 
-          The portable zip remains available for users who prefer manual extraction. It includes the self-contained app build, license files, privacy notice, third-party notices, and the LGPL shared FFmpeg runtime used for stitching and export. The PowerShell installer script remains available as a fallback and verifies the release asset SHA-256 before extracting the package when GitHub provides the asset digest.
+          The portable zip remains available for users who prefer manual extraction. It includes the self-contained app build, license files, privacy notice, third-party notices, and the LGPL shared FFmpeg runtime used for stitching and export. The PowerShell installer script remains available as a fallback and verifies the release asset SHA-256 before extracting the package when GitHub provides the asset digest. The uninstall script removes fallback/script installs, shortcuts, and local app data caches unless run with `-KeepAppData`.
 
           See INSTALL.md in the repository for the full install notes.
           "@

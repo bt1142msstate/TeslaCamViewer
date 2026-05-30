@@ -41,6 +41,7 @@ namespace TeslaCamViewer
         private FileSystemWatcher _teslaCamWatcher;
         private DispatcherTimer _clipRefreshDebounceTimer;
         private CancellationTokenSource _clipTelemetrySummaryCancellation = new CancellationTokenSource();
+        private CancellationTokenSource _disengagementMarkerCancellation = new CancellationTokenSource();
         private string _currentSourcePath = "";
         private string _watchedTeslaCamPath = "";
         private int _scanRequestVersion = 0;
@@ -53,7 +54,14 @@ namespace TeslaCamViewer
         private double _sidebarResizeStartWidth = 320.0;
         private readonly HashSet<string> _thumbnailJobs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly SemaphoreSlim _thumbnailSemaphore = new SemaphoreSlim(1, 1);
+        private readonly object _clipTelemetrySummaryCacheLock = new object();
+        private readonly Dictionary<string, AutopilotTelemetrySummary> _clipTelemetrySummaryCache = new Dictionary<string, AutopilotTelemetrySummary>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, long> _clipTelemetrySummaryCacheAccessTicks = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private readonly object _clipTelemetrySummaryCacheSaveLock = new object();
+        private CancellationTokenSource _clipTelemetrySummaryCacheSaveCancellation = new CancellationTokenSource();
+        private bool _clipTelemetrySummaryCacheDirty = false;
         private List<SeiMetadata> _activeTelemetry = new List<SeiMetadata>();
+        private List<double> _activeDisengagementMarkerSeconds = new List<double>();
         private List<double> _activeSegmentStarts = new List<double>();
         private List<double> _activeSegmentDurations = new List<double>();
         private int _activeSegmentIndex = -1;
@@ -93,6 +101,9 @@ namespace TeslaCamViewer
         private const int IdcArrow = 32512;
         private const int IdcSizeWestEast = 32644;
         private const int StitchCacheMaxAgeDays = 14;
+        private const int ClipTelemetrySummaryMaxParallelism = 6;
+        private const int ClipTelemetrySummaryCacheMaxEntries = 5000;
+        private const int ClipTelemetrySummaryCacheSaveDelayMs = 1500;
         private const long StitchCacheMaxBytes = 64L * 1024L * 1024L * 1024L;
         private const long StitchCacheMinFreeBytes = 12L * 1024L * 1024L * 1024L;
 
@@ -122,6 +133,7 @@ namespace TeslaCamViewer
             ConfigureNativeTitleBar();
             CleanupOwnedFfmpegProcesses();
             QueueStartupCleanup();
+            LoadClipTelemetrySummaryCache();
 
             // Register KeyDown handler on Content Grid (since Window doesn't support KeyDown directly)
             var rootGrid = this.Content as Grid;
@@ -194,6 +206,8 @@ namespace TeslaCamViewer
             _isWindowClosing = true;
             CancelActiveStitch();
             CancelClipTelemetrySummaryScan();
+            CancelDisengagementMarkerScan();
+            FlushClipTelemetrySummaryCache();
 
             try { _hudTimer?.Stop(); } catch { }
             try { _blinkerTimer?.Stop(); } catch { }
@@ -262,6 +276,7 @@ namespace TeslaCamViewer
                 EmptyStateText.Visibility = Visibility.Visible;
                 EmptyStateText.Text = "TeslaCam source unavailable. Choose a folder or a .zip archive.";
                 ScanProgressRing.IsActive = false;
+                SetAppStatus("Source unavailable", false);
                 return;
             }
 
@@ -270,11 +285,13 @@ namespace TeslaCamViewer
             {
                 StopTeslaCamWatcher();
                 _watchedTeslaCamPath = "";
+                SetAppStatus("Extracting compressed source", true);
                 ActiveClipSubtitle.Text = "Extracting compressed TeslaCam source...";
             }
             else
             {
                 ConfigureTeslaCamWatcher(path);
+                SetAppStatus("Scanning TeslaCam source", true);
             }
 
             EmptyStateText.Visibility = Visibility.Collapsed;
@@ -329,6 +346,7 @@ namespace TeslaCamViewer
                         ScanProgressRing.IsActive = false;
                         EmptyStateText.Visibility = Visibility.Visible;
                         EmptyStateText.Text = "Scan failed. See crash.txt for details.";
+                        SetAppStatus("Scan failed", false);
                     });
                 }
             });
@@ -932,6 +950,19 @@ namespace TeslaCamViewer
             return searchable.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        private void SetAppStatus(string text, bool isActive)
+        {
+            if (AppStatusHost == null || AppStatusText == null || AppStatusProgressRing == null)
+            {
+                return;
+            }
+
+            AppStatusHost.Visibility = Visibility.Visible;
+            AppStatusText.Text = string.IsNullOrWhiteSpace(text) ? "Ready" : text;
+            AppStatusProgressRing.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
+            AppStatusProgressRing.IsActive = isActive;
+        }
+
         private CancellationToken BeginNewClipTelemetrySummaryScan()
         {
             try
@@ -958,26 +989,54 @@ namespace TeslaCamViewer
         {
             if (clips == null || clips.Count == 0 || _isWindowClosing)
             {
+                SetAppStatus("No clips to index", false);
                 return;
             }
 
-            List<TeslaClip> clipSnapshot = clips.ToList();
+            List<TeslaClip> clipSnapshot = clips
+                .OrderBy(clip => string.Equals(clip.Category, _activeCategory, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenByDescending(clip => clip.Timestamp)
+                .ToList();
             CancellationToken cancellationToken = BeginNewClipTelemetrySummaryScan();
+            int totalClips = clipSnapshot.Count;
+            int completedClips = 0;
+            int workerCount = GetClipTelemetrySummaryWorkerCount(totalClips);
+
+            SetAppStatus($"Indexing telemetry 0/{totalClips}", true);
 
             _ = Task.Run(() =>
             {
-                foreach (TeslaClip clip in clipSnapshot)
+                try
                 {
-                    if (_isWindowClosing || cancellationToken.IsCancellationRequested || scanVersion != _scanRequestVersion)
+                    var parallelOptions = new ParallelOptions
                     {
-                        return;
-                    }
+                        CancellationToken = cancellationToken,
+                        MaxDegreeOfParallelism = workerCount
+                    };
 
-                    ClipTelemetrySummary summary = BuildClipTelemetrySummary(clip, cancellationToken);
-                    if (_isWindowClosing || cancellationToken.IsCancellationRequested || scanVersion != _scanRequestVersion)
+                    Parallel.ForEach(clipSnapshot, parallelOptions, clip =>
                     {
-                        return;
-                    }
+                        parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+                        if (_isWindowClosing || scanVersion != _scanRequestVersion)
+                        {
+                            return;
+                        }
+
+                        ClipTelemetrySummary summary = BuildClipTelemetrySummary(clip, parallelOptions.CancellationToken);
+                        int currentCompleted = Interlocked.Increment(ref completedClips);
+
+                        DispatcherQueue.TryEnqueue(() =>
+                        {
+                            if (_isWindowClosing || cancellationToken.IsCancellationRequested || scanVersion != _scanRequestVersion)
+                            {
+                                return;
+                            }
+
+                            clip.FsdPercentText = FormatFsdPercentPill(summary);
+                            clip.DisengagementCountText = FormatDisengagementPill(summary);
+                            SetAppStatus($"Indexing telemetry {currentCompleted}/{totalClips}", true);
+                        });
+                    });
 
                     DispatcherQueue.TryEnqueue(() =>
                     {
@@ -986,11 +1045,63 @@ namespace TeslaCamViewer
                             return;
                         }
 
-                        clip.FsdPercentText = FormatFsdPercentPill(summary);
-                        clip.DisengagementCountText = FormatDisengagementPill(summary);
+                        SetAppStatus($"Telemetry indexed {totalClips} clips", false);
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Log("Clip telemetry summary scan", ex);
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (!_isWindowClosing && scanVersion == _scanRequestVersion)
+                        {
+                            SetAppStatus("Telemetry index failed", false);
+                        }
                     });
                 }
             }, cancellationToken);
+        }
+
+        private int GetClipTelemetrySummaryWorkerCount(int clipCount)
+        {
+            if (clipCount <= 1)
+            {
+                return 1;
+            }
+
+            if (IsCurrentSourceOnRemovableDrive())
+            {
+                return 1;
+            }
+
+            int processorBound = Math.Max(1, Environment.ProcessorCount / 2);
+            return Math.Max(1, Math.Min(clipCount, Math.Min(ClipTelemetrySummaryMaxParallelism, processorBound)));
+        }
+
+        private bool IsCurrentSourceOnRemovableDrive()
+        {
+            if (string.IsNullOrWhiteSpace(_currentSourcePath) || IsSupportedArchivePath(_currentSourcePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                string root = Path.GetPathRoot(_currentSourcePath);
+                if (string.IsNullOrWhiteSpace(root))
+                {
+                    return false;
+                }
+
+                return new DriveInfo(root).DriveType == DriveType.Removable;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private ClipTelemetrySummary BuildClipTelemetrySummary(TeslaClip clip, CancellationToken cancellationToken)
@@ -1002,95 +1113,280 @@ namespace TeslaCamViewer
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (segment?.Cameras == null ||
-                    !segment.Cameras.TryGetValue("front", out string frontPath) ||
-                    string.IsNullOrWhiteSpace(frontPath) ||
-                    !File.Exists(frontPath))
+                AutopilotTelemetrySummary segmentSummary = GetOrBuildSegmentTelemetrySummary(segment, cancellationToken);
+                if (segmentSummary == null || segmentSummary.TelemetryRecordCount <= 0)
                 {
                     wasFsdEngaged = null;
                     continue;
                 }
 
-                double segmentDurationSeconds = Math.Max(1.0, segment.EstimatedDurationSeconds);
-                List<SeiMetadata> records = TeslaSeiParser.ExtractTelemetry(frontPath, segmentDurationSeconds);
-                if (records == null || records.Count == 0)
+                summary.TelemetryRecordCount += segmentSummary.TelemetryRecordCount;
+                summary.FsdRecordCount += segmentSummary.FsdRecordCount;
+                summary.TelemetrySeconds += segmentSummary.TelemetrySeconds;
+                summary.FsdSeconds += segmentSummary.FsdSeconds;
+                summary.FsdDisengagementCount += segmentSummary.FsdDisengagementCount;
+
+                if (wasFsdEngaged == true && segmentSummary.FirstIsFsdEngaged == false)
                 {
-                    wasFsdEngaged = null;
-                    continue;
+                    summary.FsdDisengagementCount++;
                 }
 
-                List<SeiMetadata> orderedRecords = records.OrderBy(r => r.OffsetSec).ToList();
-                double fallbackIntervalSeconds = segmentDurationSeconds / orderedRecords.Count;
-
-                for (int i = 0; i < orderedRecords.Count; i++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    SeiMetadata record = orderedRecords[i];
-                    bool isFsdEngaged = record.AutopilotState == 1;
-                    summary.TelemetryRecordCount++;
-                    if (isFsdEngaged)
-                    {
-                        summary.FsdRecordCount++;
-                    }
-
-                    double intervalStart = i == 0 ? 0.0 : ClampTelemetryOffset(record.OffsetSec, segmentDurationSeconds);
-                    double intervalEnd = i + 1 < orderedRecords.Count
-                        ? ClampTelemetryOffset(orderedRecords[i + 1].OffsetSec, segmentDurationSeconds)
-                        : segmentDurationSeconds;
-
-                    if (intervalEnd <= intervalStart)
-                    {
-                        intervalEnd = Math.Min(segmentDurationSeconds, intervalStart + fallbackIntervalSeconds);
-                    }
-
-                    double intervalSeconds = Math.Max(0.0, intervalEnd - intervalStart);
-                    summary.TelemetrySeconds += intervalSeconds;
-                    if (isFsdEngaged)
-                    {
-                        summary.FsdSeconds += intervalSeconds;
-                    }
-
-                    if (wasFsdEngaged == true && !isFsdEngaged)
-                    {
-                        summary.FsdDisengagementCount++;
-                    }
-
-                    wasFsdEngaged = isFsdEngaged;
-                }
+                wasFsdEngaged = segmentSummary.LastIsFsdEngaged;
             }
 
             return summary;
         }
 
-        private double ClampTelemetryOffset(double offsetSeconds, double durationSeconds)
+        private AutopilotTelemetrySummary GetOrBuildSegmentTelemetrySummary(TeslaClipSegment segment, CancellationToken cancellationToken)
         {
-            if (double.IsNaN(offsetSeconds) || double.IsInfinity(offsetSeconds))
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (segment?.Cameras == null ||
+                !segment.Cameras.TryGetValue("front", out string frontPath) ||
+                string.IsNullOrWhiteSpace(frontPath))
             {
-                return 0.0;
+                return AutopilotTelemetrySummary.Empty;
             }
 
-            return Math.Max(0.0, Math.Min(durationSeconds, offsetSeconds));
+            FileInfo fileInfo = new FileInfo(frontPath);
+            if (!fileInfo.Exists)
+            {
+                return AutopilotTelemetrySummary.Empty;
+            }
+
+            string cacheKey = BuildSegmentTelemetrySummaryCacheKey(fileInfo);
+            lock (_clipTelemetrySummaryCacheLock)
+            {
+                if (_clipTelemetrySummaryCache.TryGetValue(cacheKey, out AutopilotTelemetrySummary cachedSummary))
+                {
+                    _clipTelemetrySummaryCacheAccessTicks[cacheKey] = DateTime.UtcNow.Ticks;
+                    return cachedSummary;
+                }
+            }
+
+            AutopilotTelemetrySummary summary = BuildSegmentTelemetrySummary(fileInfo.FullName, Math.Max(1.0, segment.EstimatedDurationSeconds), cancellationToken);
+            lock (_clipTelemetrySummaryCacheLock)
+            {
+                PruneClipTelemetrySummaryCacheForInsert();
+                _clipTelemetrySummaryCache[cacheKey] = summary;
+                _clipTelemetrySummaryCacheAccessTicks[cacheKey] = DateTime.UtcNow.Ticks;
+                _clipTelemetrySummaryCacheDirty = true;
+            }
+
+            QueueClipTelemetrySummaryCacheSave();
+            return summary;
+        }
+
+        private void PruneClipTelemetrySummaryCacheForInsert()
+        {
+            if (_clipTelemetrySummaryCache.Count < ClipTelemetrySummaryCacheMaxEntries)
+            {
+                return;
+            }
+
+            int removeCount = Math.Max(1, _clipTelemetrySummaryCache.Count - ClipTelemetrySummaryCacheMaxEntries + 1);
+            var keysToRemove = _clipTelemetrySummaryCache
+                .Keys
+                .OrderBy(key => _clipTelemetrySummaryCacheAccessTicks.TryGetValue(key, out long ticks) ? ticks : 0L)
+                .Take(removeCount)
+                .ToList();
+
+            foreach (string key in keysToRemove)
+            {
+                _clipTelemetrySummaryCache.Remove(key);
+                _clipTelemetrySummaryCacheAccessTicks.Remove(key);
+            }
+        }
+
+        private string BuildSegmentTelemetrySummaryCacheKey(FileInfo fileInfo)
+        {
+            return $"{fileInfo.FullName}|{fileInfo.Length}|{fileInfo.LastWriteTimeUtc.Ticks}";
+        }
+
+        private string GetClipTelemetrySummaryCachePath()
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(localAppData, "TeslaCamViewer", "TelemetrySummaryCache", "summary-cache-v1.json");
+        }
+
+        private void LoadClipTelemetrySummaryCache()
+        {
+            try
+            {
+                string cachePath = GetClipTelemetrySummaryCachePath();
+                if (!File.Exists(cachePath))
+                {
+                    return;
+                }
+
+                string json = File.ReadAllText(cachePath);
+                var entries = JsonSerializer.Deserialize<List<PersistentClipTelemetrySummaryCacheEntry>>(json);
+                if (entries == null || entries.Count == 0)
+                {
+                    return;
+                }
+
+                lock (_clipTelemetrySummaryCacheLock)
+                {
+                    _clipTelemetrySummaryCache.Clear();
+                    _clipTelemetrySummaryCacheAccessTicks.Clear();
+
+                    foreach (PersistentClipTelemetrySummaryCacheEntry entry in entries
+                        .Where(entry => entry != null && !string.IsNullOrWhiteSpace(entry.Key) && entry.Summary != null)
+                        .OrderByDescending(entry => entry.LastAccessUtcTicks)
+                        .Take(ClipTelemetrySummaryCacheMaxEntries))
+                    {
+                        _clipTelemetrySummaryCache[entry.Key] = entry.Summary;
+                        _clipTelemetrySummaryCacheAccessTicks[entry.Key] = entry.LastAccessUtcTicks > 0
+                            ? entry.LastAccessUtcTicks
+                            : DateTime.UtcNow.Ticks;
+                    }
+
+                    _clipTelemetrySummaryCacheDirty = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Load telemetry summary cache", ex);
+            }
+        }
+
+        private void QueueClipTelemetrySummaryCacheSave()
+        {
+            try
+            {
+                CancellationTokenSource previousCancellation;
+                CancellationTokenSource saveCancellation = new CancellationTokenSource();
+                lock (_clipTelemetrySummaryCacheSaveLock)
+                {
+                    previousCancellation = _clipTelemetrySummaryCacheSaveCancellation;
+                    _clipTelemetrySummaryCacheSaveCancellation = saveCancellation;
+                }
+
+                try { previousCancellation?.Cancel(); } catch { }
+                try { previousCancellation?.Dispose(); } catch { }
+
+                CancellationToken token = saveCancellation.Token;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(ClipTelemetrySummaryCacheSaveDelayMs, token);
+                        SaveClipTelemetrySummaryCacheIfDirty(token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    catch (Exception ex)
+                    {
+                        CrashLogger.Log("Save telemetry summary cache task", ex);
+                    }
+                }, token);
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Queue telemetry summary cache save", ex);
+            }
+        }
+
+        private void FlushClipTelemetrySummaryCache()
+        {
+            try
+            {
+                CancellationTokenSource cancellation;
+                lock (_clipTelemetrySummaryCacheSaveLock)
+                {
+                    cancellation = _clipTelemetrySummaryCacheSaveCancellation;
+                    _clipTelemetrySummaryCacheSaveCancellation = new CancellationTokenSource();
+                }
+
+                try { cancellation?.Cancel(); } catch { }
+                try { cancellation?.Dispose(); } catch { }
+
+                SaveClipTelemetrySummaryCacheIfDirty(CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Flush telemetry summary cache", ex);
+            }
+        }
+
+        private void SaveClipTelemetrySummaryCacheIfDirty(CancellationToken cancellationToken)
+        {
+            List<PersistentClipTelemetrySummaryCacheEntry> entries;
+            lock (_clipTelemetrySummaryCacheLock)
+            {
+                if (!_clipTelemetrySummaryCacheDirty)
+                {
+                    return;
+                }
+
+                entries = _clipTelemetrySummaryCache
+                    .Select(pair => new PersistentClipTelemetrySummaryCacheEntry
+                    {
+                        Key = pair.Key,
+                        LastAccessUtcTicks = _clipTelemetrySummaryCacheAccessTicks.TryGetValue(pair.Key, out long ticks) ? ticks : DateTime.UtcNow.Ticks,
+                        Summary = pair.Value
+                    })
+                    .OrderByDescending(entry => entry.LastAccessUtcTicks)
+                    .Take(ClipTelemetrySummaryCacheMaxEntries)
+                    .ToList();
+
+                _clipTelemetrySummaryCacheDirty = false;
+            }
+
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                string cachePath = GetClipTelemetrySummaryCachePath();
+                string cacheDirectory = Path.GetDirectoryName(cachePath);
+                if (!string.IsNullOrWhiteSpace(cacheDirectory))
+                {
+                    Directory.CreateDirectory(cacheDirectory);
+                }
+
+                string tempPath = cachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                var options = new JsonSerializerOptions { WriteIndented = false };
+                string json = JsonSerializer.Serialize(entries, options);
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, cachePath, overwrite: true);
+            }
+            catch
+            {
+                lock (_clipTelemetrySummaryCacheLock)
+                {
+                    _clipTelemetrySummaryCacheDirty = true;
+                }
+
+                throw;
+            }
+        }
+
+        private AutopilotTelemetrySummary BuildSegmentTelemetrySummary(string frontPath, double segmentDurationSeconds, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return TeslaSeiParser.ExtractAutopilotSummary(frontPath, segmentDurationSeconds, cancellationToken);
         }
 
         private string FormatFsdPercentPill(ClipTelemetrySummary summary)
         {
             if (summary == null || summary.TelemetryRecordCount <= 0)
             {
-                return "FSD --";
+                return "--% FSD";
             }
 
             double percent = summary.TelemetrySeconds > 0.0
                 ? summary.FsdSeconds * 100.0 / summary.TelemetrySeconds
                 : summary.FsdRecordCount * 100.0 / summary.TelemetryRecordCount;
-            return $"FSD {Math.Round(percent):0}%";
+            return $"{Math.Round(percent):0}% FSD";
         }
 
         private string FormatDisengagementPill(ClipTelemetrySummary summary)
         {
             if (summary == null || summary.TelemetryRecordCount <= 0)
             {
-                return "DIS --";
+                return "-- diseng.";
             }
 
             return $"{summary.FsdDisengagementCount} diseng.";
@@ -1363,6 +1659,22 @@ namespace TeslaCamViewer
             catch { }
 
             KillActiveFfmpegProcesses();
+        }
+
+        private CancellationToken BeginNewDisengagementMarkerScan()
+        {
+            CancelDisengagementMarkerScan();
+            _disengagementMarkerCancellation = new CancellationTokenSource();
+            return _disengagementMarkerCancellation.Token;
+        }
+
+        private void CancelDisengagementMarkerScan()
+        {
+            try
+            {
+                _disengagementMarkerCancellation?.Cancel();
+            }
+            catch { }
         }
 
         private void QueueStartupCleanup()
@@ -2215,9 +2527,11 @@ namespace TeslaCamViewer
         {
             int clipVersion = ++_clipSelectionVersion;
             CancellationToken stitchToken = BeginNewStitchOperation();
+            CancellationToken markerToken = BeginNewDisengagementMarkerScan();
             SetStitchActivity(false);
             SetPlaybackActivity(false);
             ResetExportMarkers();
+            ResetDisengagementMarkers();
             try
             {
                 _activeClip = clip;
@@ -2240,6 +2554,7 @@ namespace TeslaCamViewer
 
                 _activePlaybackSegments = playbackSegments;
                 InitializeClipTimeline(playbackSegments);
+                QueueDisengagementMarkersForClip(clip, sortedSegments, clipVersion, markerToken);
 
                 if (playbackSegments.Count > 0)
                 {
@@ -2707,7 +3022,7 @@ namespace TeslaCamViewer
             bool isMoving = !double.IsNaN(speedMph) && !double.IsInfinity(speedMph) && speedMph >= 0.5;
             string motionState = IsParkGear(data.GearState)
                 ? "PARKED"
-                : isMoving ? "MOVING" : "IDLE";
+                : isMoving ? "DRIVING" : "IDLE";
 
             if (data.AutopilotState > 0)
             {
@@ -2719,7 +3034,7 @@ namespace TeslaCamViewer
                 return "PARKED";
             }
 
-            return $"MANUAL {motionState}";
+            return $"MANUALLY {motionState}";
         }
 
         private string GetAutonomyModeText(uint autopilotState)
@@ -3199,7 +3514,198 @@ namespace TeslaCamViewer
 
             double targetX = trackLeft + (progress * trackWidth) - (thumbWidth / 2.0);
             TimelineGlassThumbTransform.X = Math.Max(0.0, Math.Min(Math.Max(0.0, hostWidth - thumbWidth), targetX));
+            UpdateDisengagementMarkerVisuals(trackLeft, trackWidth);
             UpdateExportMarkerVisuals(trackLeft, trackWidth);
+        }
+
+        private void QueueDisengagementMarkersForClip(TeslaClip clip, List<TeslaClipSegment> sortedSegments, int clipVersion, CancellationToken cancellationToken)
+        {
+            if (clip == null || sortedSegments == null || sortedSegments.Count == 0)
+            {
+                ResetDisengagementMarkers();
+                return;
+            }
+
+            _ = Task.Run(() =>
+            {
+                var markerSeconds = new List<double>();
+                bool? previousSegmentEndedFsd = null;
+                double segmentStartSeconds = 0.0;
+
+                try
+                {
+                    foreach (TeslaClipSegment segment in sortedSegments)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        double segmentDurationSeconds = segment?.EstimatedDurationSeconds > 0.0
+                            ? segment.EstimatedDurationSeconds
+                            : 60.0;
+                        segmentDurationSeconds = Math.Max(0.1, segmentDurationSeconds);
+
+                        if (segment?.Cameras != null &&
+                            segment.Cameras.TryGetValue("front", out string frontPath) &&
+                            !string.IsNullOrWhiteSpace(frontPath) &&
+                            File.Exists(frontPath))
+                        {
+                            AutopilotDisengagementMarkers markers = TeslaSeiParser.ExtractAutopilotDisengagementMarkers(
+                                frontPath,
+                                segmentDurationSeconds,
+                                cancellationToken);
+
+                            if (markers != null && markers.TelemetryRecordCount > 0)
+                            {
+                                if (previousSegmentEndedFsd == true && !markers.FirstIsFsdEngaged)
+                                {
+                                    AddDisengagementMarkerSecond(markerSeconds, segmentStartSeconds);
+                                }
+
+                                foreach (double offset in markers.OffsetsSeconds)
+                                {
+                                    AddDisengagementMarkerSecond(markerSeconds, segmentStartSeconds + offset);
+                                }
+
+                                previousSegmentEndedFsd = markers.LastIsFsdEngaged;
+                            }
+                            else
+                            {
+                                previousSegmentEndedFsd = null;
+                            }
+                        }
+                        else
+                        {
+                            previousSegmentEndedFsd = null;
+                        }
+
+                        segmentStartSeconds += segmentDurationSeconds;
+                    }
+
+                    if (_isWindowClosing || cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    DispatcherQueue?.TryEnqueue(() =>
+                    {
+                        if (_isWindowClosing ||
+                            cancellationToken.IsCancellationRequested ||
+                            clipVersion != _clipSelectionVersion ||
+                            _activeClip != clip)
+                        {
+                            return;
+                        }
+
+                        SetDisengagementMarkers(markerSeconds);
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    if (!_isWindowClosing)
+                    {
+                        CrashLogger.Log("Disengagement marker scan", ex);
+                    }
+                }
+            }, cancellationToken);
+        }
+
+        private static void AddDisengagementMarkerSecond(List<double> markerSeconds, double seconds)
+        {
+            if (markerSeconds == null || double.IsNaN(seconds) || double.IsInfinity(seconds))
+            {
+                return;
+            }
+
+            seconds = Math.Max(0.0, seconds);
+            if (markerSeconds.Count == 0 || Math.Abs(markerSeconds[markerSeconds.Count - 1] - seconds) > 0.15)
+            {
+                markerSeconds.Add(seconds);
+            }
+        }
+
+        private void SetDisengagementMarkers(List<double> markerSeconds)
+        {
+            _activeDisengagementMarkerSeconds = markerSeconds
+                ?.Where(seconds => !double.IsNaN(seconds) && !double.IsInfinity(seconds))
+                .OrderBy(seconds => seconds)
+                .ToList() ?? new List<double>();
+
+            RebuildDisengagementMarkerElements();
+            UpdateTimelineScrubberVisual();
+        }
+
+        private void ResetDisengagementMarkers()
+        {
+            _activeDisengagementMarkerSeconds.Clear();
+            if (TimelineDisengagementMarkersCanvas != null)
+            {
+                TimelineDisengagementMarkersCanvas.Children.Clear();
+                TimelineDisengagementMarkersCanvas.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void RebuildDisengagementMarkerElements()
+        {
+            if (TimelineDisengagementMarkersCanvas == null)
+            {
+                return;
+            }
+
+            TimelineDisengagementMarkersCanvas.Children.Clear();
+            foreach (double seconds in _activeDisengagementMarkerSeconds)
+            {
+                var marker = new Border
+                {
+                    Width = 4,
+                    Height = 16,
+                    CornerRadius = new CornerRadius(2),
+                    Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 214, 10)),
+                    BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(170, 255, 255, 255)),
+                    BorderThickness = new Thickness(1),
+                    Opacity = 0.98,
+                    Tag = seconds,
+                    IsHitTestVisible = false
+                };
+
+                TimelineDisengagementMarkersCanvas.Children.Add(marker);
+            }
+
+            TimelineDisengagementMarkersCanvas.Visibility = _activeDisengagementMarkerSeconds.Count > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        private void UpdateDisengagementMarkerVisuals(double trackLeft, double trackWidth)
+        {
+            if (TimelineDisengagementMarkersCanvas == null || TimelineDisengagementMarkersCanvas.Children.Count == 0)
+            {
+                return;
+            }
+
+            double range = Math.Max(0.0, _activeClipDurationSeconds);
+            if (range <= 0.0 || trackWidth <= 0.0)
+            {
+                TimelineDisengagementMarkersCanvas.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            TimelineDisengagementMarkersCanvas.Visibility = Visibility.Visible;
+            double hostHeight = TimelineScrubberHost?.ActualHeight > 0.0 ? TimelineScrubberHost.ActualHeight : 32.0;
+
+            foreach (UIElement element in TimelineDisengagementMarkersCanvas.Children)
+            {
+                if (element is FrameworkElement marker && marker.Tag is double seconds)
+                {
+                    double progress = Math.Max(0.0, Math.Min(1.0, seconds / range));
+                    double markerWidth = marker.ActualWidth > 0.0 ? marker.ActualWidth : marker.Width;
+                    double markerHeight = marker.ActualHeight > 0.0 ? marker.ActualHeight : marker.Height;
+
+                    Canvas.SetLeft(marker, trackLeft + (progress * trackWidth) - (markerWidth / 2.0));
+                    Canvas.SetTop(marker, Math.Max(0.0, (hostHeight - markerHeight) / 2.0));
+                }
+            }
         }
 
         private void UpdateExportMarkerVisuals()
@@ -4887,6 +5393,13 @@ namespace TeslaCamViewer
             public double FsdSeconds { get; set; }
         }
 
+        private sealed class PersistentClipTelemetrySummaryCacheEntry
+        {
+            public string Key { get; set; }
+            public long LastAccessUtcTicks { get; set; }
+            public AutopilotTelemetrySummary Summary { get; set; }
+        }
+
         private string FormatClipTitle(string firstTimestamp, string lastTimestamp, int segmentCount, string suffix = null)
         {
             return BuildClipDisplayMetadata(firstTimestamp, lastTimestamp, segmentCount, suffix).Title;
@@ -5040,8 +5553,8 @@ namespace TeslaCamViewer
     public class TeslaClip : INotifyPropertyChanged
     {
         private ImageSource _thumbnailSource;
-        private string _fsdPercentText = "FSD ...";
-        private string _disengagementCountText = "DIS ...";
+        private string _fsdPercentText = "--% FSD";
+        private string _disengagementCountText = "-- diseng.";
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -5146,9 +5659,98 @@ namespace TeslaCamViewer
         public double OffsetSec { get; set; }
     }
 
+    public sealed class AutopilotTelemetrySummary
+    {
+        public static readonly AutopilotTelemetrySummary Empty = new AutopilotTelemetrySummary();
+
+        public int TelemetryRecordCount { get; set; }
+        public int FsdRecordCount { get; set; }
+        public int FsdDisengagementCount { get; set; }
+        public double TelemetrySeconds { get; set; }
+        public double FsdSeconds { get; set; }
+        public bool FirstIsFsdEngaged { get; set; }
+        public bool LastIsFsdEngaged { get; set; }
+    }
+
+    public sealed class AutopilotDisengagementMarkers
+    {
+        public static readonly AutopilotDisengagementMarkers Empty = new AutopilotDisengagementMarkers();
+
+        public int TelemetryRecordCount { get; set; }
+        public bool FirstIsFsdEngaged { get; set; }
+        public bool LastIsFsdEngaged { get; set; }
+        public List<double> OffsetsSeconds { get; set; } = new List<double>();
+    }
+
     // --- 100% NATIVE C# TELEMETRY PROTOBUF DECODER ---
     public static class TeslaSeiParser
     {
+        private readonly struct AutopilotTelemetrySample
+        {
+            public AutopilotTelemetrySample(double offsetSec, uint autopilotState, ulong frameSeqNo)
+            {
+                OffsetSec = offsetSec;
+                AutopilotState = autopilotState;
+                FrameSeqNo = frameSeqNo;
+            }
+
+            public double OffsetSec { get; }
+            public uint AutopilotState { get; }
+            public ulong FrameSeqNo { get; }
+        }
+
+        public static AutopilotTelemetrySummary ExtractAutopilotSummary(string filePath, double durationSeconds = 60.0, CancellationToken cancellationToken = default)
+        {
+            var samples = new List<AutopilotTelemetrySample>();
+
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!TryExtractAutopilotSamplesWithSampleTiming(filePath, samples, cancellationToken))
+                {
+                    ExtractAutopilotSamplesFromMdat(filePath, samples, cancellationToken);
+                    NormalizeAutopilotSampleOffsets(samples, durationSeconds);
+                }
+
+                return BuildAutopilotSummary(samples, durationSeconds);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Error parsing autopilot summary: " + ex.Message);
+                return AutopilotTelemetrySummary.Empty;
+            }
+        }
+
+        public static AutopilotDisengagementMarkers ExtractAutopilotDisengagementMarkers(string filePath, double durationSeconds = 60.0, CancellationToken cancellationToken = default)
+        {
+            var samples = new List<AutopilotTelemetrySample>();
+
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!TryExtractAutopilotSamplesWithSampleTiming(filePath, samples, cancellationToken))
+                {
+                    ExtractAutopilotSamplesFromMdat(filePath, samples, cancellationToken);
+                    NormalizeAutopilotSampleOffsets(samples, durationSeconds);
+                }
+
+                return BuildAutopilotDisengagementMarkers(samples, durationSeconds);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Error parsing autopilot disengagement markers: " + ex.Message);
+                return AutopilotDisengagementMarkers.Empty;
+            }
+        }
+
         public static List<SeiMetadata> ExtractTelemetry(string filePath, double durationSeconds = 60.0)
         {
             List<SeiMetadata> records = new List<SeiMetadata>();
@@ -5254,6 +5856,364 @@ namespace TeslaCamViewer
                 Debug.WriteLine("Error parsing: " + ex.Message);
             }
             return records;
+        }
+
+        private static bool TryExtractAutopilotSamplesWithSampleTiming(string filePath, List<AutopilotTelemetrySample> samples, CancellationToken cancellationToken)
+        {
+            Mp4TimingInfo timing = ReadMp4TimingInfo(filePath);
+            Mp4TrackInfo videoTrack = timing.GetPreferredVideoTrack();
+            if (videoTrack == null)
+            {
+                return false;
+            }
+
+            using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (BinaryReader br = new BinaryReader(fs))
+            {
+                foreach (Mp4SampleSpan sample in EnumerateTrackSamples(videoTrack, timing))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    ulong fileLength = (ulong)fs.Length;
+                    if (sample.SampleSize == 0 ||
+                        sample.FileOffset > fileLength ||
+                        sample.SampleSize > fileLength - sample.FileOffset)
+                    {
+                        continue;
+                    }
+
+                    fs.Position = (long)sample.FileOffset;
+                    ExtractAutopilotSamplesFromSample(
+                        br,
+                        (long)(sample.FileOffset + sample.SampleSize),
+                        sample.PresentationSeconds,
+                        videoTrack.NalLengthSize,
+                        samples,
+                        cancellationToken);
+                }
+            }
+
+            samples.Sort((left, right) => left.OffsetSec.CompareTo(right.OffsetSec));
+            return samples.Count > 0;
+        }
+
+        private static void ExtractAutopilotSamplesFromMdat(string filePath, List<AutopilotTelemetrySample> samples, CancellationToken cancellationToken)
+        {
+            using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (BinaryReader br = new BinaryReader(fs))
+            {
+                long mdatOffset = 0;
+                long mdatSize = 0;
+                while (fs.Position + 8 <= fs.Length)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    byte[] lenBytes = br.ReadBytes(4);
+                    if (lenBytes.Length < 4) break;
+                    uint atomSize = (uint)((lenBytes[0] << 24) | (lenBytes[1] << 16) | (lenBytes[2] << 8) | lenBytes[3]);
+
+                    byte[] typeBytes = br.ReadBytes(4);
+                    if (typeBytes.Length < 4) break;
+                    string atomType = System.Text.Encoding.ASCII.GetString(typeBytes);
+
+                    long headerSize = 8;
+                    if (atomSize == 1)
+                    {
+                        byte[] extBytes = br.ReadBytes(8);
+                        if (extBytes.Length < 8) break;
+                        ulong size64 = 0;
+                        for (int i = 0; i < 8; i++) size64 = (size64 << 8) | extBytes[i];
+                        mdatSize = (long)size64 - 16;
+                        headerSize = 16;
+                    }
+                    else
+                    {
+                        mdatSize = (long)atomSize - 8;
+                    }
+
+                    if (atomType == "mdat")
+                    {
+                        mdatOffset = fs.Position;
+                        break;
+                    }
+
+                    if (atomSize < headerSize) break;
+                    fs.Seek(mdatSize, SeekOrigin.Current);
+                }
+
+                if (mdatOffset == 0)
+                {
+                    return;
+                }
+
+                long endPosition = mdatOffset + mdatSize;
+                if (mdatSize == 0) endPosition = fs.Length;
+
+                while (fs.Position + 4 < endPosition)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    byte[] sizeBytes = br.ReadBytes(4);
+                    if (sizeBytes.Length < 4) break;
+                    uint nalSize = (uint)((sizeBytes[0] << 24) | (sizeBytes[1] << 16) | (sizeBytes[2] << 8) | sizeBytes[3]);
+
+                    if (nalSize < 2 || fs.Position + nalSize > endPosition || nalSize > int.MaxValue)
+                    {
+                        fs.Seek(Math.Max(1, (long)nalSize), SeekOrigin.Current);
+                        continue;
+                    }
+
+                    byte firstByte = br.ReadByte();
+                    byte secondByte = br.ReadByte();
+                    if (IsSeiNalHeader(firstByte))
+                    {
+                        byte[] nal = new byte[nalSize];
+                        nal[0] = firstByte;
+                        nal[1] = secondByte;
+                        int restLength = (int)nalSize - 2;
+                        byte[] nalRest = br.ReadBytes(restLength);
+                        if (nalRest.Length == restLength)
+                        {
+                            Buffer.BlockCopy(nalRest, 0, nal, 2, nalRest.Length);
+                            if (TryExtractAutopilotSampleNal(nal, 0.0, out AutopilotTelemetrySample autopilotSample))
+                            {
+                                samples.Add(autopilotSample);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        fs.Seek((long)nalSize - 2, SeekOrigin.Current);
+                    }
+                }
+            }
+        }
+
+        private static void ExtractAutopilotSamplesFromSample(
+            BinaryReader br,
+            long sampleEnd,
+            double sampleOffsetSec,
+            int nalLengthSize,
+            List<AutopilotTelemetrySample> samples,
+            CancellationToken cancellationToken)
+        {
+            nalLengthSize = Math.Max(1, Math.Min(4, nalLengthSize));
+            int sampleSize = (int)Math.Min(int.MaxValue, Math.Max(0, sampleEnd - br.BaseStream.Position));
+            if (sampleSize <= nalLengthSize)
+            {
+                return;
+            }
+
+            byte[] sampleData = br.ReadBytes(sampleSize);
+            int pos = 0;
+            while (pos + nalLengthSize <= sampleData.Length)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                int nalLengthOffset = pos;
+                uint nalSize = ReadNalLength(sampleData, ref pos, nalLengthSize);
+                if (nalSize < 2 || nalSize > int.MaxValue || pos + (int)nalSize > sampleData.Length)
+                {
+                    pos = Math.Min(sampleData.Length, nalLengthOffset + 1);
+                    continue;
+                }
+
+                byte firstByte = sampleData[pos];
+                if (IsSeiNalHeader(firstByte))
+                {
+                    byte[] nal = new byte[nalSize];
+                    Buffer.BlockCopy(sampleData, pos, nal, 0, (int)nalSize);
+
+                    if (TryExtractAutopilotSampleNal(nal, sampleOffsetSec, out AutopilotTelemetrySample autopilotSample))
+                    {
+                        samples.Add(autopilotSample);
+                    }
+                }
+
+                pos += (int)nalSize;
+            }
+        }
+
+        private static bool TryExtractAutopilotSampleNal(byte[] nal, double offsetSec, out AutopilotTelemetrySample sample)
+        {
+            sample = default;
+            if (nal == null || nal.Length < 2 || !IsSeiNalHeader(nal[0]))
+            {
+                return false;
+            }
+
+            byte[] payload = ExtractProtoPayload(nal);
+            if (payload == null ||
+                !TryDecodeAutopilotTelemetry(payload, out uint autopilotState, out ulong frameSeqNo))
+            {
+                return false;
+            }
+
+            sample = new AutopilotTelemetrySample(offsetSec, autopilotState, frameSeqNo);
+            return true;
+        }
+
+        private static bool IsSeiNalHeader(byte firstByte)
+        {
+            int h264NalType = firstByte & 0x1F;
+            int h265NalType = (firstByte >> 1) & 0x3F;
+            return h264NalType == 6 || h265NalType == 39 || h265NalType == 40;
+        }
+
+        private static AutopilotTelemetrySummary BuildAutopilotSummary(List<AutopilotTelemetrySample> samples, double durationSeconds)
+        {
+            if (samples == null || samples.Count == 0)
+            {
+                return AutopilotTelemetrySummary.Empty;
+            }
+
+            double duration = durationSeconds > 0.0 && !double.IsNaN(durationSeconds) && !double.IsInfinity(durationSeconds)
+                ? durationSeconds
+                : 60.0;
+            var summary = new AutopilotTelemetrySummary();
+            double fallbackIntervalSeconds = duration / samples.Count;
+            bool? previousIsFsdEngaged = null;
+
+            for (int i = 0; i < samples.Count; i++)
+            {
+                AutopilotTelemetrySample sample = samples[i];
+                bool isFsdEngaged = sample.AutopilotState == 1;
+                if (i == 0)
+                {
+                    summary.FirstIsFsdEngaged = isFsdEngaged;
+                }
+
+                summary.LastIsFsdEngaged = isFsdEngaged;
+                summary.TelemetryRecordCount++;
+                if (isFsdEngaged)
+                {
+                    summary.FsdRecordCount++;
+                }
+
+                double intervalStart = i == 0 ? 0.0 : ClampTelemetryOffset(sample.OffsetSec, duration);
+                double intervalEnd = i + 1 < samples.Count
+                    ? ClampTelemetryOffset(samples[i + 1].OffsetSec, duration)
+                    : duration;
+
+                if (intervalEnd <= intervalStart)
+                {
+                    intervalEnd = Math.Min(duration, intervalStart + fallbackIntervalSeconds);
+                }
+
+                double intervalSeconds = Math.Max(0.0, intervalEnd - intervalStart);
+                summary.TelemetrySeconds += intervalSeconds;
+                if (isFsdEngaged)
+                {
+                    summary.FsdSeconds += intervalSeconds;
+                }
+
+                if (previousIsFsdEngaged == true && !isFsdEngaged)
+                {
+                    summary.FsdDisengagementCount++;
+                }
+
+                previousIsFsdEngaged = isFsdEngaged;
+            }
+
+            return summary;
+        }
+
+        private static AutopilotDisengagementMarkers BuildAutopilotDisengagementMarkers(List<AutopilotTelemetrySample> samples, double durationSeconds)
+        {
+            if (samples == null || samples.Count == 0)
+            {
+                return AutopilotDisengagementMarkers.Empty;
+            }
+
+            double duration = durationSeconds > 0.0 && !double.IsNaN(durationSeconds) && !double.IsInfinity(durationSeconds)
+                ? durationSeconds
+                : 60.0;
+            var markers = new AutopilotDisengagementMarkers();
+            bool? previousIsFsdEngaged = null;
+
+            for (int i = 0; i < samples.Count; i++)
+            {
+                AutopilotTelemetrySample sample = samples[i];
+                bool isFsdEngaged = sample.AutopilotState == 1;
+                if (i == 0)
+                {
+                    markers.FirstIsFsdEngaged = isFsdEngaged;
+                }
+
+                markers.LastIsFsdEngaged = isFsdEngaged;
+                markers.TelemetryRecordCount++;
+
+                if (previousIsFsdEngaged == true && !isFsdEngaged)
+                {
+                    double offsetSeconds = ClampTelemetryOffset(sample.OffsetSec, duration);
+                    if (markers.OffsetsSeconds.Count == 0 ||
+                        Math.Abs(markers.OffsetsSeconds[markers.OffsetsSeconds.Count - 1] - offsetSeconds) > 0.15)
+                    {
+                        markers.OffsetsSeconds.Add(offsetSeconds);
+                    }
+                }
+
+                previousIsFsdEngaged = isFsdEngaged;
+            }
+
+            return markers;
+        }
+
+        private static void NormalizeAutopilotSampleOffsets(List<AutopilotTelemetrySample> samples, double durationSeconds)
+        {
+            if (samples == null || samples.Count == 0)
+            {
+                return;
+            }
+
+            if (samples.Any(sample => sample.OffsetSec > 0.0))
+            {
+                samples.Sort((left, right) => left.OffsetSec.CompareTo(right.OffsetSec));
+                return;
+            }
+
+            double duration = durationSeconds > 0.0 && !double.IsNaN(durationSeconds) && !double.IsInfinity(durationSeconds)
+                ? durationSeconds
+                : 60.0;
+            if (samples.Count == 1)
+            {
+                samples[0] = new AutopilotTelemetrySample(0.0, samples[0].AutopilotState, samples[0].FrameSeqNo);
+                return;
+            }
+
+            ulong firstSeq = samples[0].FrameSeqNo;
+            ulong lastSeq = samples[samples.Count - 1].FrameSeqNo;
+            if (lastSeq > firstSeq)
+            {
+                double frameRate = (lastSeq - firstSeq) / duration;
+                if (frameRate > 1.0 && !double.IsNaN(frameRate) && !double.IsInfinity(frameRate))
+                {
+                    for (int i = 0; i < samples.Count; i++)
+                    {
+                        samples[i] = new AutopilotTelemetrySample(
+                            (samples[i].FrameSeqNo - firstSeq) / frameRate,
+                            samples[i].AutopilotState,
+                            samples[i].FrameSeqNo);
+                    }
+                    return;
+                }
+            }
+
+            for (int i = 0; i < samples.Count; i++)
+            {
+                double offsetSec = (duration * i) / (samples.Count - 1);
+                samples[i] = new AutopilotTelemetrySample(offsetSec, samples[i].AutopilotState, samples[i].FrameSeqNo);
+            }
+        }
+
+        private static double ClampTelemetryOffset(double offsetSeconds, double durationSeconds)
+        {
+            if (double.IsNaN(offsetSeconds) || double.IsInfinity(offsetSeconds))
+            {
+                return 0.0;
+            }
+
+            return Math.Max(0.0, Math.Min(durationSeconds, offsetSeconds));
         }
 
         private static bool TryExtractTelemetryWithSampleTiming(string filePath, List<SeiMetadata> records)
@@ -6012,6 +6972,17 @@ namespace TeslaCamViewer
             return value;
         }
 
+        private static uint ReadNalLength(byte[] data, ref int pos, int lengthSize)
+        {
+            uint value = 0;
+            for (int i = 0; i < lengthSize && pos < data.Length; i++)
+            {
+                value = (value << 8) | data[pos++];
+            }
+
+            return value;
+        }
+
         private static List<SeiMetadata> NormalizeTelemetryOffsets(List<SeiMetadata> records, double durationSeconds)
         {
             if (records == null) return new List<SeiMetadata>();
@@ -6126,6 +7097,74 @@ namespace TeslaCamViewer
             double val = BitConverter.ToDouble(data, pos);
             pos += 8;
             return val;
+        }
+
+        private static bool TryDecodeAutopilotTelemetry(byte[] data, out uint autopilotState, out ulong frameSeqNo)
+        {
+            autopilotState = 0;
+            frameSeqNo = 0;
+            if (data == null)
+            {
+                return false;
+            }
+
+            int pos = 0;
+            while (pos < data.Length)
+            {
+                ulong key = ReadVarint(data, ref pos);
+                uint fieldNum = (uint)(key >> 3);
+                uint wireType = (uint)(key & 0x07);
+
+                if (wireType == 0)
+                {
+                    ulong val = ReadVarint(data, ref pos);
+                    if (fieldNum == 3)
+                    {
+                        frameSeqNo = val;
+                    }
+                    else if (fieldNum == 10)
+                    {
+                        autopilotState = (uint)val;
+                    }
+                }
+                else if (wireType == 5)
+                {
+                    if (pos + 4 > data.Length)
+                    {
+                        pos = data.Length;
+                        break;
+                    }
+
+                    pos += 4;
+                }
+                else if (wireType == 1)
+                {
+                    if (pos + 8 > data.Length)
+                    {
+                        pos = data.Length;
+                        break;
+                    }
+
+                    pos += 8;
+                }
+                else if (wireType == 2)
+                {
+                    ulong length = ReadVarint(data, ref pos);
+                    if (length > int.MaxValue || pos + (int)length > data.Length)
+                    {
+                        pos = data.Length;
+                        break;
+                    }
+
+                    pos += (int)length;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return true;
         }
 
         private static SeiMetadata DecodeSeiMetadata(byte[] data)

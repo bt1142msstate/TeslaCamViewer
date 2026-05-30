@@ -36,6 +36,7 @@
                     <RowDefinition Height="Auto"/> <!-- Category Tabs -->
                     <RowDefinition Height="Auto"/> <!-- Search -->
                     <RowDefinition Height="Auto"/> <!-- Clip View Mode -->
+                    <RowDefinition Height="Auto"/> <!-- App Status -->
                     <RowDefinition Height="*"/>    <!-- Clips List -->
                 </Grid.RowDefinitions>
 
@@ -169,8 +170,20 @@
                     </Grid>
                 </Border>
 
+                <!-- App status -->
+                <Border x:Name="AppStatusHost" Grid.Row="5" Background="{StaticResource GlassSidebarInputBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1" CornerRadius="8" Padding="8,6,8,6" Margin="0,0,0,10">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <ProgressRing x:Name="AppStatusProgressRing" Width="14" Height="14" IsActive="False" Visibility="Collapsed" Foreground="{StaticResource SidebarAccentBrush}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="AppStatusText" Grid.Column="1" Text="Ready" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource SidebarTextSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+
                 <!-- Clips list -->
-                <Grid Grid.Row="5">
+                <Grid Grid.Row="6">
                     <ListView x:Name="ClipsListView"
                               SelectionChanged="ClipsListView_SelectionChanged"
                               ContainerContentChanging="ClipsListView_ContainerContentChanging"
@@ -575,6 +588,10 @@
                             <Border x:Name="TimelineProgress" Width="0" HorizontalAlignment="Left" CornerRadius="6" Background="#A85AC8FA"/>
                             <Border CornerRadius="6" BorderBrush="#20FFFFFF" BorderThickness="0,1,0,0"/>
                         </Grid>
+                        <Canvas x:Name="TimelineDisengagementMarkersCanvas"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                IsHitTestVisible="False"/>
                         <Border x:Name="ExportStartMarker" Width="4" Height="24" CornerRadius="2" Background="#30D158" HorizontalAlignment="Left" VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False">
                             <Border.RenderTransform>
                                 <TranslateTransform x:Name="ExportStartMarkerTransform"/>

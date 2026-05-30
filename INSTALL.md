@@ -9,7 +9,8 @@ Recommended preview download:
 https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe
 
 Download the setup executable and run it. It installs TESLA Cam under the user's
-profile, creates Start Menu and desktop shortcuts, and launches the app.
+profile, creates Start Menu and desktop shortcuts, and launches the app. No
+Visual Studio, build tools, Git clone, or command-line steps are required.
 
 The long-term lowest-friction Windows path is Microsoft Store distribution. The
 long-term command-line install path is WinGet, with GitHub Releases used as the
@@ -69,12 +70,30 @@ used for stitching and export.
 
 ## Uninstall
 
-Run this in PowerShell:
+If you installed with the one-click setup, use Windows Settings > Apps >
+Installed apps and uninstall TESLA Cam from there when the entry is present.
+
+For scripted, portable, or full local cleanup, run this in PowerShell:
 
 ```powershell
 $uninstaller = Join-Path $env:TEMP 'teslacam-uninstall.ps1'
 Invoke-WebRequest 'https://raw.githubusercontent.com/bt1142msstate/TeslaCamViewer/main/scripts/uninstall.ps1' -OutFile $uninstaller
 powershell -ExecutionPolicy Bypass -File $uninstaller
+```
+
+The cleanup script removes the fallback/script install folder, Start Menu and
+desktop shortcuts, and local app data under:
+
+```text
+%LOCALAPPDATA%\TeslaCamViewer
+```
+
+That local data folder contains generated thumbnails, stitched playback cache,
+archive import cache, and telemetry summary cache. To remove the app but keep
+those local caches:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File $uninstaller -KeepAppData
 ```
 
 ## Packaging Notes

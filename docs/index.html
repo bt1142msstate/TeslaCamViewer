@@ -4,19 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TESLA Cam - Windows TeslaCam Viewer</title>
-  <meta name="description" content="Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry HUD, markers, and export tools. Optional subscription and donations may support future development.">
-  <meta name="keywords" content="free TeslaCam viewer, Tesla dashcam, dashcam viewer, Sentry Mode, Windows TeslaCam app, WinUI 3, vehicle telemetry, video stitching, FFmpeg, MP4 export, GitHub Releases, Windows installer, WinGet">
+  <meta name="description" content="Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry indexing, FSD percentages, disengagement markers, collage browsing, and export tools.">
+  <meta name="keywords" content="free TeslaCam viewer, Tesla dashcam, dashcam viewer, Sentry Mode, Windows TeslaCam app, WinUI 3, vehicle telemetry, FSD percentage, disengagement markers, video stitching, FFmpeg, MP4 export, GitHub Releases, Windows installer, WinGet">
   <meta name="theme-color" content="#111418">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://bt1142msstate.github.io/TeslaCamViewer/">
   <meta property="og:title" content="TESLA Cam - Windows TeslaCam Viewer">
-  <meta property="og:description" content="Free TeslaCam drive review with continuous multi-camera playback, telemetry, markers, and export tools. No export watermarks or forced branding.">
+  <meta property="og:description" content="Free TeslaCam drive review with continuous multi-camera playback, telemetry indexing, yellow disengagement markers, collage browsing, and export tools. No export watermarks or forced branding.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://bt1142msstate.github.io/TeslaCamViewer/screenshots/hero-desktop-daylight.png">
   <meta property="og:url" content="https://bt1142msstate.github.io/TeslaCamViewer/">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="TESLA Cam - Windows TeslaCam Viewer">
-  <meta name="twitter:description" content="Free stitched TeslaCam playback, telemetry, markers, and export tools with no export watermarks or forced branding.">
+  <meta name="twitter:description" content="Free stitched TeslaCam playback, telemetry indexing, disengagement markers, collage browsing, and export tools with no export watermarks or forced branding.">
   <meta name="twitter:image" content="https://bt1142msstate.github.io/TeslaCamViewer/screenshots/hero-desktop-daylight.png">
   <script type="application/ld+json">
   {
@@ -25,7 +25,7 @@
     "name": "TESLA Cam",
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Windows 10 or newer",
-    "description": "Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry HUD, markers, and export tools.",
+    "description": "Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry indexing, FSD percentages, disengagement markers, collage browsing, and export tools.",
     "softwareVersion": "0.1.0-preview.2",
     "author": {
       "@type": "Person",
@@ -789,9 +789,9 @@
     <div class="hero-inner">
       <p class="eyebrow">Windows TeslaCam viewer</p>
       <h1>TESLA Cam</h1>
-      <p class="tagline">Review a full drive as one continuous multi-camera session with synchronized playback, embedded telemetry, marker-based export, and a free core app that does not watermark your exports.</p>
+      <p class="tagline">Review a full drive as one continuous multi-camera session with synchronized playback, embedded telemetry, FSD and disengagement context, marker-based export, and a free core app that does not watermark your exports.</p>
       <div class="hero-actions">
-        <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe">Download Installer</a>
+        <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe">Download Setup</a>
         <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-portable.zip">Portable ZIP</a>
         <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/INSTALL.md">Install notes</a>
       </div>
@@ -801,12 +801,12 @@
           <span>front, rear, repeaters, pillars</span>
         </div>
         <div class="metric">
-          <strong>Telemetry HUD</strong>
-          <span>speed, steering, GPS, FSD state</span>
+          <strong>Telemetry Index</strong>
+          <span>FSD %, speed, GPS, steering</span>
         </div>
         <div class="metric">
-          <strong>Markers</strong>
-          <span>set IN / OUT export ranges</span>
+          <strong>Disengagements</strong>
+          <span>yellow timeline markers</span>
         </div>
         <div class="metric">
           <strong>Free core app</strong>
@@ -820,23 +820,23 @@
     <section class="section" id="features">
       <div class="section-heading">
         <h2>Built For Drive Review</h2>
-        <p>TESLA Cam focuses on the repetitive work of reviewing long TeslaCam drives: find the clip, keep the camera angles together, verify telemetry, and export only what matters.</p>
+        <p>TESLA Cam focuses on the repetitive work of reviewing long TeslaCam drives: find the clip, keep the camera angles together, see FSD and disengagement context, verify telemetry, and export only what matters.</p>
       </div>
       <div class="feature-grid">
         <article class="feature-card">
           <small>Playback</small>
           <h3>Stitched Drive Sessions</h3>
-          <p>Groups one-minute TeslaCam files into full drive sessions, then stitches camera streams for a smoother timeline.</p>
+          <p>Groups one-minute TeslaCam files into full drive sessions, then stitches camera streams so a drive feels like one continuous video.</p>
         </article>
         <article class="feature-card">
           <small>Camera Layout</small>
           <h3>Multi-View Review</h3>
-          <p>Show front, rear, repeater, and pillar views together, with quick camera swapping for closer inspection.</p>
+          <p>Show front, rear, repeater, and pillar views together in a dark translucent interface, with quick camera swapping for closer inspection.</p>
         </article>
         <article class="feature-card">
           <small>Telemetry</small>
           <h3>Embedded Data HUD</h3>
-          <p>Displays speed, steering, gear, pedals, blinkers, GPS, heading, g-force, and autonomy state when metadata is present.</p>
+          <p>Displays speed, left/right steering, gear, pedals, blinkers, GPS, heading, g-force, and autonomy state when metadata is present.</p>
         </article>
         <article class="feature-card">
           <small>Export</small>
@@ -844,14 +844,29 @@
           <p>Add IN and OUT markers, export the current camera or all views, and validate telemetry preservation after export.</p>
         </article>
         <article class="feature-card">
+          <small>Timeline</small>
+          <h3>Disengagement Markers</h3>
+          <p>Yellow ticks on the scrubber show where FSD disengagements happen across the selected drive.</p>
+        </article>
+        <article class="feature-card">
+          <small>Clip Library</small>
+          <h3>Fast Browsing</h3>
+          <p>Use a virtualized clip list, selected-clip styling, FSD percentage pills, disengagement counts, and a resizable collage view with first-frame thumbnails.</p>
+        </article>
+        <article class="feature-card">
+          <small>Indexing</small>
+          <h3>Background Status</h3>
+          <p>Telemetry summaries are indexed in the background, cached locally for faster repeat scans, and surfaced through a small app status indicator.</p>
+        </article>
+        <article class="feature-card">
           <small>Sources</small>
           <h3>Drive Or Archive</h3>
-          <p>Open a mounted TeslaCam storage device, a copied TeslaCam folder, or a supported compressed archive.</p>
+          <p>Open a mounted TeslaCam storage device, a copied TeslaCam folder, or a supported ZIP archive such as an exported all-views package.</p>
         </article>
         <article class="feature-card">
           <small>Roadmap</small>
           <h3>Visual Context</h3>
-          <p>Planned local indexing will use capable GPU or NPU hardware, with optional cloud-assisted visual context for subscription users.</p>
+          <p>Planned visual context will add clip photos or gallery browsing and optional telemetry overlays without covering video by default.</p>
         </article>
       </div>
     </section>
@@ -882,13 +897,13 @@
     <section class="section" id="install">
       <div class="section-heading">
         <h2>Download Windows Installer</h2>
-        <p>Download the current Windows preview directly from this page. No Visual Studio, build tools, or manual extraction are required. Early GitHub builds are unsigned, so Windows may show an unknown-publisher warning until Store distribution or code signing is ready.</p>
+        <p>Download the current Windows preview directly from this page. The recommended setup path is one download and one run: no Visual Studio, build tools, Git clone, command line, or manual extraction required. Early GitHub builds are unsigned, so Windows may show an unknown-publisher warning until Store distribution or code signing is ready.</p>
       </div>
       <div class="install-layout">
         <article class="install-panel">
           <span class="pill">Recommended</span>
           <h3>One-Click Windows Setup</h3>
-          <p class="muted">Download the setup executable, run it, and TESLA Cam installs under your user profile with Start Menu and desktop shortcuts.</p>
+          <p class="muted">Download the setup executable, run it, and TESLA Cam installs under your user profile with Start Menu and desktop shortcuts. If the setup registers an uninstall entry, remove it later from Windows Settings > Apps.</p>
           <div class="button-row">
             <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe">Download Setup</a>
             <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/SHA256SUMS.txt">SHA-256</a>
@@ -907,7 +922,7 @@
         <article class="install-panel">
           <span class="pill">Command Line</span>
           <h3>Script And WinGet Path</h3>
-          <p class="muted">The PowerShell script remains available as a fallback. WinGet is planned after the package name, signed installer, and release identity are stable.</p>
+          <p class="muted">The PowerShell scripts remain available for fallback install and full local cleanup, including stitched playback cache, archive imports, thumbnails, and telemetry summary cache. WinGet is planned after the package name, signed installer, and release identity are stable.</p>
           <button class="command" type="button" data-copy-command="winget install --id BrandonTemple.FinalAppName -e" aria-label="Copy command">
             <code>winget install --id BrandonTemple.FinalAppName -e</code>
             <span class="copy-action" aria-hidden="true">
@@ -920,6 +935,7 @@
           </button>
           <div class="button-row">
             <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/Install-TESLA-Cam.ps1">Script fallback</a>
+            <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/Uninstall-TESLA-Cam.ps1">Cleanup script</a>
             <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/blob/main/packaging/winget/README.md">WinGet plan</a>
           </div>
         </article>
@@ -934,7 +950,7 @@
       <div class="roadmap-grid">
         <article class="roadmap-item">
           <strong>Free To Use</strong>
-          <p>Drive scanning, multi-camera playback, telemetry review, markers, and core export tools are planned as free app capabilities.</p>
+          <p>Drive scanning, source watching, multi-camera playback, telemetry review, disengagement markers, collage browsing, and core export tools are planned as free app capabilities.</p>
         </article>
         <article class="roadmap-item">
           <strong>No Forced Branding</strong>
@@ -980,7 +996,7 @@
         </article>
         <article class="roadmap-item">
           <strong>Visual Context</strong>
-          <p>Add searchable local clip indexing for capable GPU or NPU hardware, with optional cloud-assisted context as an opt-in subscription feature.</p>
+          <p>Add searchable clip photos, gallery-style review, and visual context indexing for capable GPU or NPU hardware, with optional cloud-assisted context as an opt-in subscription feature.</p>
         </article>
       </div>
     </section>

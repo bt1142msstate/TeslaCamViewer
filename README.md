@@ -1,7 +1,7 @@
 <div align="center">
   <img src="src/TeslaCamViewer/Assets/AppIcon.svg" width="86" alt="TESLA Cam app icon">
   <h1>TESLA Cam</h1>
-  <p><strong>Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry, markers, and export.</strong></p>
+  <p><strong>Free source-available Windows TeslaCam viewer for stitched drive playback, multi-camera review, telemetry indexing, disengagement markers, and export.</strong></p>
   <p>
     <a href="https://github.com/bt1142msstate/TeslaCamViewer/actions/workflows/windows-build.yml"><img alt="Windows Build" src="https://img.shields.io/github/actions/workflow/status/bt1142msstate/TeslaCamViewer/windows-build.yml?branch=main&label=windows%20build"></a>
     <a href="https://github.com/bt1142msstate/TeslaCamViewer/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/bt1142msstate/TeslaCamViewer?include_prereleases&label=release"></a>
@@ -13,7 +13,7 @@
 
 ![TESLA Cam playback dashboard with stitched TeslaCam cameras and telemetry](docs/screenshots/app-playback-dashboard.png)
 
-TESLA Cam is a Windows desktop viewer for TeslaCam footage. It is built with WinUI 3 and Windows App SDK, and focuses on turning Tesla's split camera files into a drive-centered viewing experience.
+TESLA Cam is a Windows desktop viewer for TeslaCam footage. It is built with WinUI 3 and Windows App SDK, and focuses on turning Tesla's split camera files into a drive-centered viewing experience with continuous playback, synchronized telemetry, searchable clip context, and export tools.
 
 The core app is intended to stay free. The free version should not add ads,
 promotional overlays, export watermarks, or forced branding to your clips.
@@ -43,23 +43,32 @@ vehicle telemetry, Windows desktop app, video stitching, clip export, marker
 based editing, Sentry Mode review.
 
 Tags: `tesla`, `teslacam`, `tesla-dashcam`, `dashcam-viewer`, `winui3`,
-`windows-app-sdk`, `dotnet`, `ffmpeg`, `mp4`, `telemetry`, `video-stitching`,
-`video-export`, `sentry-mode`, `source-available`, `github-releases`, `winget`.
+`windows-app-sdk`, `dotnet`, `ffmpeg`, `mp4`, `telemetry`, `fsd`,
+`disengagement-markers`, `video-stitching`, `video-export`, `sentry-mode`,
+`source-available`, `github-releases`, `winget`.
 
 ## Current Features
 
 - Scan a mounted TeslaCam drive, copied TeslaCam folder, or supported ZIP archive.
+- Watch the selected source for detached drives, changed folders, and newly added clips.
 - Group one-minute TeslaCam segments into drive sessions.
 - Stitch each drive into continuous camera feeds for smoother playback.
-- Show front, rear, repeater, and pillar camera views together.
+- Show front, rear, repeater, and pillar camera views together in a dark translucent WinUI interface.
 - Swap the main camera view by clicking an auxiliary view.
-- Display embedded telemetry including speed, steering, gear, pedals, blinkers, GPS, heading, and autonomy state.
-- Scrub across the full drive timeline.
-- Add IN and OUT markers for exporting.
-- Export the current view as MP4.
-- Export all views into a compressed ZIP folder.
+- Scrub across the full drive timeline with a custom liquid-glass scrubber.
+- Show yellow disengagement markers directly on the timeline track.
+- Add IN and OUT range markers for exporting.
+- Display embedded telemetry including speed, steering, gear, pedals, blinkers, GPS, heading, g-force, and autonomy state.
+- Label steering as left, right, or straight instead of showing negative steering values.
+- Index clip-level FSD percentage and disengagement counts in the background.
+- Cache telemetry summaries locally so repeat scans are faster without writing to the Tesla storage device.
+- Show app status while scanning, indexing telemetry, stitching, loading, and exporting.
+- Use a virtualized clip list so large drives do not spawn every clip row at once.
+- Switch to collage mode with first-frame thumbnails for faster visual scanning.
+- Resize the sidebar to give collage mode more room.
+- Export either the current camera view as MP4 or all views as a compressed ZIP package.
 - Validate post-export telemetry preservation.
-- Use a local cache and background cleanup helper for stitched clips.
+- Use local caches and a background cleanup helper for stitched clips, archive imports, thumbnails, and telemetry summaries.
 
 ## Windows Support
 
@@ -83,15 +92,19 @@ winget install --id BrandonTemple.FinalAppName -e
 
 Current preview release assets:
 
-- [Download Windows setup](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe)
+- [Download Windows setup (recommended)](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-Setup.exe)
 - [Download portable ZIP](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/TESLA-Cam-win-x64-portable.zip)
 - [Download PowerShell fallback script](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/Install-TESLA-Cam.ps1)
+- [Download cleanup/uninstall script](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/Uninstall-TESLA-Cam.ps1)
 - [View checksums](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.2/SHA256SUMS.txt)
 
 The setup installer installs the app under the user's profile and creates app
-shortcuts. The portable ZIP and PowerShell script remain available for manual or
-scripted installs. See [INSTALL.md](INSTALL.md) for preview install, manual
-install, stable-only install, and uninstall details.
+shortcuts without requiring Visual Studio, build tools, Git, or manual
+extraction. The portable ZIP and PowerShell scripts remain available for manual,
+scripted, and full-clean uninstall flows. The cleanup script can remove local
+app data including stitched playback cache, archive imports, thumbnails, and
+telemetry summary cache when a full uninstall is desired. See [INSTALL.md](INSTALL.md)
+for preview install, manual install, stable-only install, and uninstall details.
 
 ## Build
 
