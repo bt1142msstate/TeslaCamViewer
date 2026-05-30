@@ -90,6 +90,8 @@ namespace TeslaCamViewer
         private string _playbackActivityText = "";
         private string _stitchActivityText = "";
         private string _exportActivityText = "";
+        private string _appStatusText = "Ready";
+        private bool _isAppStatusActive = false;
         private double? _exportStartSeconds = null;
         private double? _exportEndSeconds = null;
         private int _segmentLoadVersion = 0;
@@ -1168,15 +1170,18 @@ namespace TeslaCamViewer
 
         private void SetAppStatus(string text, bool isActive)
         {
-            if (AppStatusHost == null || AppStatusText == null || AppStatusProgressRing == null)
+            _appStatusText = string.IsNullOrWhiteSpace(text) ? "Ready" : text;
+            _isAppStatusActive = isActive;
+
+            if (AppStatusHost != null && AppStatusText != null && AppStatusProgressRing != null)
             {
-                return;
+                AppStatusHost.Visibility = Visibility.Visible;
+                AppStatusText.Text = _appStatusText;
+                AppStatusProgressRing.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
+                AppStatusProgressRing.IsActive = isActive;
             }
 
-            AppStatusHost.Visibility = Visibility.Visible;
-            AppStatusText.Text = string.IsNullOrWhiteSpace(text) ? "Ready" : text;
-            AppStatusProgressRing.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
-            AppStatusProgressRing.IsActive = isActive;
+            UpdateActivityVisuals();
         }
 
         private void ConfigureUpdateHttpClient()
@@ -2604,26 +2609,29 @@ namespace TeslaCamViewer
                 bool showPlayback = _isPlaybackActivityVisible;
                 bool showStitch = _isStitchActivityVisible;
                 bool showExport = _isExportActivityVisible;
-                bool showStatus = showPlayback || showExport || showStitch;
+                bool showAppStatus = _isAppStatusActive;
+                bool showStatus = showPlayback || showExport || showStitch || showAppStatus;
                 string statusText = showPlayback
                     ? (string.IsNullOrWhiteSpace(_playbackActivityText) ? "Loading video" : _playbackActivityText)
                     : showExport
                         ? (string.IsNullOrWhiteSpace(_exportActivityText) ? "Exporting range" : _exportActivityText)
-                        : (string.IsNullOrWhiteSpace(_stitchActivityText) ? "Stitching drive" : _stitchActivityText);
+                        : showStitch
+                            ? (string.IsNullOrWhiteSpace(_stitchActivityText) ? "Stitching drive" : _stitchActivityText)
+                            : (string.IsNullOrWhiteSpace(_appStatusText) ? "Working" : _appStatusText);
 
-                if (PlaybackStatusPill != null)
+                if (SharedStatusPill != null)
                 {
-                    PlaybackStatusPill.Visibility = showStatus ? Visibility.Visible : Visibility.Collapsed;
+                    SharedStatusPill.Visibility = showStatus ? Visibility.Visible : Visibility.Collapsed;
                 }
 
-                if (PlaybackStatusRing != null)
+                if (SharedStatusRing != null)
                 {
-                    PlaybackStatusRing.IsActive = showStatus;
+                    SharedStatusRing.IsActive = showStatus;
                 }
 
-                if (PlaybackStatusText != null)
+                if (SharedStatusText != null)
                 {
-                    PlaybackStatusText.Text = statusText;
+                    SharedStatusText.Text = statusText;
                 }
 
                 if (VideoLoadingOverlay != null)

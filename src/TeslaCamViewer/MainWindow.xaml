@@ -438,10 +438,10 @@
                     <TextBlock x:Name="ActiveClipSubtitle" Text="Select a drive from the sidebar to begin" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Border x:Name="PlaybackStatusPill" Visibility="Collapsed" Background="{StaticResource GlassPanelBrush}" CornerRadius="14" Padding="10,6,12,6" BorderThickness="1" BorderBrush="{StaticResource GlassBorderBrush}">
+                    <Border x:Name="SharedStatusPill" Visibility="Collapsed" Background="{StaticResource GlassPanelBrush}" CornerRadius="14" Padding="10,6,12,6" BorderThickness="1" BorderBrush="{StaticResource GlassBorderBrush}">
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <ProgressRing x:Name="PlaybackStatusRing" IsActive="False" Width="14" Height="14" Foreground="{StaticResource AccentCyanBrush}"/>
-                            <TextBlock x:Name="PlaybackStatusText" Text="Loading" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                            <ProgressRing x:Name="SharedStatusRing" IsActive="False" Width="14" Height="14" Foreground="{StaticResource AccentCyanBrush}"/>
+                            <TextBlock x:Name="SharedStatusText" Text="Loading" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="260"/>
                         </StackPanel>
                     </Border>
                     <Border x:Name="AutonomyBadge" Visibility="Collapsed" Background="{StaticResource GlassPanelBrush}" CornerRadius="12" Padding="12,6,12,6" BorderThickness="1" BorderBrush="{StaticResource GlassBorderBrush}">
