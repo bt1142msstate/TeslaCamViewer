@@ -130,6 +130,7 @@ namespace TeslaCamViewer
         private const int ClipTelemetrySummaryCacheMaxEntries = 5000;
         private const int ClipTelemetrySummaryCacheSaveDelayMs = 1500;
         private const int StitchCacheMaxParallelCameraCopies = 2;
+        private const bool UsePlaybackListsForDriveReview = false;
         private const double PlaybackListPrefetchSeconds = 20.0;
         private const uint PlaybackListPlayedItemsToKeepOpen = 2;
         private const long StitchCacheMaxBytes = 64L * 1024L * 1024L * 1024L;
@@ -3053,11 +3054,14 @@ namespace TeslaCamViewer
                     psi.ArgumentList.Add("0:v:0");
                     psi.ArgumentList.Add("-c");
                     psi.ArgumentList.Add("copy");
+                    psi.ArgumentList.Add("-movflags");
+                    psi.ArgumentList.Add("+faststart");
                     psi.ArgumentList.Add(tempOutputPath);
 
                     using (var process = new Process { StartInfo = psi })
                     {
                         process.Start();
+                        TrySetBackgroundProcessPriority(process);
                         RegisterFfmpegProcess(process);
                         Task<string> stderrTask = process.StandardError.ReadToEndAsync();
                         Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
@@ -3472,6 +3476,18 @@ namespace TeslaCamViewer
             catch { }
         }
 
+        private void TrySetBackgroundProcessPriority(Process process)
+        {
+            try
+            {
+                if (process != null && !process.HasExited)
+                {
+                    process.PriorityClass = ProcessPriorityClass.BelowNormal;
+                }
+            }
+            catch { }
+        }
+
         private string SafeGetTaskResult(Task<string> task)
         {
             try
@@ -3527,6 +3543,8 @@ namespace TeslaCamViewer
                     SetPlaybackActivity(false);
                 }
 
+                stitchedPlaybackSegment = TryGetCachedStitchedPlaybackSegment(clip, sortedSegments);
+
                 List<TeslaClipSegment> playbackSegments = stitchedPlaybackSegment != null
                     ? new List<TeslaClipSegment> { stitchedPlaybackSegment }
                     : sortedSegments;
@@ -3534,11 +3552,12 @@ namespace TeslaCamViewer
                 _activePlaybackSegments = playbackSegments;
                 InitializeClipTimeline(playbackSegments);
                 QueueManualDrivingRangesForClip(clip, playbackSegments, clipVersion, markerToken);
+                LogPlaybackDiagnostic($"PlaybackMode mode={(stitchedPlaybackSegment != null ? "stitched-cache" : "raw-segments")} playbackSegments={playbackSegments.Count} sourceSegments={sortedSegments.Count}");
 
                 if (playbackSegments.Count > 0)
                 {
                     ActiveClipTitle.Text = !string.IsNullOrWhiteSpace(clip.DateText) ? clip.DateText : clip.Title;
-                    if (playbackSegments.Count > 1)
+                    if (UsePlaybackListsForDriveReview && playbackSegments.Count > 1)
                     {
                         bool startedPlaybackList = await TryStartPlaybackListAsync(
                             clip,
@@ -3555,6 +3574,11 @@ namespace TeslaCamViewer
                     }
 
                     SelectClipSegment(playbackSegments[0], wasPlaying: keepPlaying);
+
+                    if (stitchedPlaybackSegment == null && sortedSegments.Count > 1)
+                    {
+                        _ = PrepareStitchedPlaybackInBackgroundAsync(clip, sortedSegments, clipVersion, stitchToken);
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -4988,7 +5012,15 @@ namespace TeslaCamViewer
                 return string.IsNullOrWhiteSpace(clipSummary) ? playingText : $"{clipSummary}, {playingText}";
             }
 
-            string segmentText = $"Playing drive: {_activeClip.Segments.Count} segments";
+            bool usingCachedStitch =
+                _activePlaybackSegments != null &&
+                _activePlaybackSegments.Count == 1 &&
+                _activeClip.Segments.Count > 1 &&
+                !ReferenceEquals(_activePlaybackSegments[0], _activeClip.Segments.FirstOrDefault());
+
+            string segmentText = usingCachedStitch
+                ? $"Playing cached stitched drive: {_activeClip.Segments.Count} segments"
+                : $"Playing drive: {_activeClip.Segments.Count} segments";
             return string.IsNullOrWhiteSpace(clipSummary) ? segmentText : $"{clipSummary}, {segmentText}";
         }
 

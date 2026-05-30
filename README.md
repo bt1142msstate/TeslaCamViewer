@@ -54,7 +54,7 @@ Tags: `tesla`, `teslacam`, `tesla-dashcam`, `dashcam-viewer`, `winui3`,
 - Scan a mounted TeslaCam drive, copied TeslaCam folder, or supported ZIP archive.
 - Watch the selected source for detached drives, changed folders, and newly added clips.
 - Group TeslaCam segments into exact-duration drive sessions using MP4 sample and edit table timing.
-- Play each drive through prefetched virtual stitched camera timelines so long drives open quickly without waiting for FFmpeg or source-swapping at every segment boundary.
+- Play each drive immediately through the raw segment timeline, then switch to cached stitched camera files when they are available for smoother long-drive playback.
 - Show front, rear, repeater, and pillar camera views together in a dark translucent WinUI interface.
 - Swap the main camera view by clicking an auxiliary view.
 - Scrub across the full drive timeline with a custom liquid-glass scrubber.
