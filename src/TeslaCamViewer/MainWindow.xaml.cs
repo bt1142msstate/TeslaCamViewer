@@ -4392,6 +4392,7 @@ namespace TeslaCamViewer
             _ = Task.Run(() =>
             {
                 var manualRanges = new List<TimelineRange>();
+                var timelineSegments = new List<AutopilotTimelineSegment>();
                 double segmentStartSeconds = 0.0;
 
                 try
@@ -4409,24 +4410,31 @@ namespace TeslaCamViewer
                             !string.IsNullOrWhiteSpace(frontPath) &&
                             File.Exists(frontPath))
                         {
-                            AutopilotManualDrivingTimeline manualTimeline = TeslaSeiParser.ExtractAutopilotManualDrivingTimeline(
-                                frontPath,
-                                GetSegmentCameraDurationSeconds(segment, "front", segmentDurationSeconds),
-                                cancellationToken);
-
-                            if (manualTimeline != null && manualTimeline.TelemetryRecordCount > 0)
+                            timelineSegments.Add(new AutopilotTimelineSegment
                             {
-                                foreach (TimelineRange range in manualTimeline.ManualRanges)
-                                {
-                                    AddTimelineRange(
-                                        manualRanges,
-                                        segmentStartSeconds + range.StartSeconds,
-                                        segmentStartSeconds + range.EndSeconds);
-                                }
-                            }
+                                FilePath = frontPath,
+                                StartSeconds = segmentStartSeconds,
+                                DurationSeconds = GetSegmentCameraDurationSeconds(segment, "front", segmentDurationSeconds)
+                            });
                         }
 
                         segmentStartSeconds += segmentDurationSeconds;
+                    }
+
+                    if (timelineSegments.Count > 0)
+                    {
+                        AutopilotManualDrivingTimeline manualTimeline = TeslaSeiParser.ExtractAutopilotManualDrivingTimelineForSegments(
+                            timelineSegments,
+                            Math.Max(0.1, segmentStartSeconds),
+                            cancellationToken);
+
+                        if (manualTimeline != null && manualTimeline.TelemetryRecordCount > 0)
+                        {
+                            foreach (TimelineRange range in manualTimeline.ManualRanges)
+                            {
+                                AddTimelineRange(manualRanges, range.StartSeconds, range.EndSeconds);
+                            }
+                        }
                     }
 
                     if (_isWindowClosing || cancellationToken.IsCancellationRequested)
@@ -6659,12 +6667,22 @@ namespace TeslaCamViewer
         public List<TimelineRange> ManualRanges { get; set; } = new List<TimelineRange>();
     }
 
+    public sealed class AutopilotTimelineSegment
+    {
+        public string FilePath { get; set; }
+        public double StartSeconds { get; set; }
+        public double DurationSeconds { get; set; }
+    }
+
     // --- 100% NATIVE C# TELEMETRY PROTOBUF DECODER ---
     public static class TeslaSeiParser
     {
         private const float ManualDrivingSpeedThresholdMps = 0.22352f; // 0.5 mph
-        private const float AutonomyParkingTailMaxSpeedMps = 1.78816f; // 4 mph
-        private const double AutonomyParkingTailContextSeconds = 12.0;
+        private const float AutonomyParkingTailMaxSpeedMps = 3.57632f; // 8 mph
+        private const double AutonomyParkingTailContextSeconds = 45.0;
+        private const double AutonomyParkingTailCarryoverSeconds = 1.0;
+        private const double AutonomyParkingTailMaxDurationSeconds = 90.0;
+        private const double ManualDrivingRangeMinDurationSeconds = 1.0;
 
         private readonly struct AutopilotTelemetrySample
         {
@@ -6686,17 +6704,9 @@ namespace TeslaCamViewer
 
         public static AutopilotTelemetrySummary ExtractAutopilotSummary(string filePath, double durationSeconds = 60.0, CancellationToken cancellationToken = default)
         {
-            var samples = new List<AutopilotTelemetrySample>();
-
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!TryExtractAutopilotSamplesWithSampleTiming(filePath, samples, cancellationToken))
-                {
-                    ExtractAutopilotSamplesFromMdat(filePath, samples, cancellationToken);
-                    NormalizeAutopilotSampleOffsets(samples, durationSeconds);
-                }
-
+                List<AutopilotTelemetrySample> samples = ExtractAutopilotSamples(filePath, durationSeconds, cancellationToken);
                 return BuildAutopilotSummary(samples, durationSeconds);
             }
             catch (OperationCanceledException)
@@ -6727,17 +6737,9 @@ namespace TeslaCamViewer
 
         public static AutopilotManualDrivingTimeline ExtractAutopilotManualDrivingTimeline(string filePath, double durationSeconds = 60.0, CancellationToken cancellationToken = default)
         {
-            var samples = new List<AutopilotTelemetrySample>();
-
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!TryExtractAutopilotSamplesWithSampleTiming(filePath, samples, cancellationToken))
-                {
-                    ExtractAutopilotSamplesFromMdat(filePath, samples, cancellationToken);
-                    NormalizeAutopilotSampleOffsets(samples, durationSeconds);
-                }
-
+                List<AutopilotTelemetrySample> samples = ExtractAutopilotSamples(filePath, durationSeconds, cancellationToken);
                 return BuildAutopilotManualDrivingTimeline(samples, durationSeconds);
             }
             catch (OperationCanceledException)
@@ -6749,6 +6751,85 @@ namespace TeslaCamViewer
                 Debug.WriteLine("Error parsing autopilot manual driving timeline: " + ex.Message);
                 return AutopilotManualDrivingTimeline.Empty;
             }
+        }
+
+        public static AutopilotManualDrivingTimeline ExtractAutopilotManualDrivingTimelineForSegments(
+            IEnumerable<AutopilotTimelineSegment> segments,
+            double durationSeconds,
+            CancellationToken cancellationToken = default)
+        {
+            var samples = new List<AutopilotTelemetrySample>();
+
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (segments == null)
+                {
+                    return AutopilotManualDrivingTimeline.Empty;
+                }
+
+                foreach (AutopilotTimelineSegment segment in segments)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (segment == null ||
+                        string.IsNullOrWhiteSpace(segment.FilePath) ||
+                        !File.Exists(segment.FilePath))
+                    {
+                        continue;
+                    }
+
+                    double segmentDurationSeconds = segment.DurationSeconds > 0.0 &&
+                        !double.IsNaN(segment.DurationSeconds) &&
+                        !double.IsInfinity(segment.DurationSeconds)
+                            ? segment.DurationSeconds
+                            : 60.0;
+
+                    List<AutopilotTelemetrySample> segmentSamples = ExtractAutopilotSamples(
+                        segment.FilePath,
+                        segmentDurationSeconds,
+                        cancellationToken);
+
+                    foreach (AutopilotTelemetrySample sample in segmentSamples)
+                    {
+                        samples.Add(new AutopilotTelemetrySample(
+                            Math.Max(0.0, segment.StartSeconds) + ClampTelemetryOffset(sample.OffsetSec, segmentDurationSeconds),
+                            sample.AutopilotState,
+                            sample.GearState,
+                            sample.VehicleSpeedMps,
+                            sample.FrameSeqNo));
+                    }
+                }
+
+                samples.Sort((left, right) => left.OffsetSec.CompareTo(right.OffsetSec));
+                return BuildAutopilotManualDrivingTimeline(samples, durationSeconds);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Error parsing combined autopilot manual driving timeline: " + ex.Message);
+                return AutopilotManualDrivingTimeline.Empty;
+            }
+        }
+
+        private static List<AutopilotTelemetrySample> ExtractAutopilotSamples(string filePath, double durationSeconds, CancellationToken cancellationToken)
+        {
+            var samples = new List<AutopilotTelemetrySample>();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!TryExtractAutopilotSamplesWithSampleTiming(filePath, samples, cancellationToken))
+            {
+                ExtractAutopilotSamplesFromMdat(filePath, samples, cancellationToken);
+                NormalizeAutopilotSampleOffsets(samples, durationSeconds);
+            }
+            else
+            {
+                samples.Sort((left, right) => left.OffsetSec.CompareTo(right.OffsetSec));
+            }
+
+            return samples;
         }
 
         public static List<SeiMetadata> ExtractTelemetry(string filePath, double durationSeconds = 60.0)
@@ -7193,7 +7274,7 @@ namespace TeslaCamViewer
 
         private static void AddManualTimelineRange(List<TimelineRange> ranges, double startSeconds, double endSeconds)
         {
-            if (ranges == null || endSeconds - startSeconds <= 0.02)
+            if (ranges == null || endSeconds - startSeconds <= ManualDrivingRangeMinDurationSeconds)
             {
                 return;
             }
@@ -7222,7 +7303,7 @@ namespace TeslaCamViewer
             if (samples == null ||
                 intervalStarts == null ||
                 intervalEnds == null ||
-                manualStartIndex <= 0 ||
+                manualStartIndex < 0 ||
                 manualEndIndex < manualStartIndex ||
                 manualEndIndex >= samples.Count)
             {
@@ -7246,18 +7327,23 @@ namespace TeslaCamViewer
 
             double rangeStart = intervalStarts[manualStartIndex];
             double rangeEnd = intervalEnds[manualEndIndex];
-            bool hasRecentAutonomy = false;
-            for (int i = manualStartIndex - 1; i >= 0; i--)
-            {
-                if (rangeStart - intervalEnds[i] > AutonomyParkingTailContextSeconds)
-                {
-                    break;
-                }
+            double rangeDuration = Math.Max(0.0, rangeEnd - rangeStart);
+            bool hasRecentAutonomy = rangeStart <= AutonomyParkingTailCarryoverSeconds;
 
-                if (IsAutonomyActiveSample(samples[i]))
+            if (!hasRecentAutonomy)
+            {
+                for (int i = manualStartIndex - 1; i >= 0; i--)
                 {
-                    hasRecentAutonomy = true;
-                    break;
+                    if (rangeStart - intervalEnds[i] > AutonomyParkingTailContextSeconds)
+                    {
+                        break;
+                    }
+
+                    if (IsAutonomyActiveSample(samples[i]))
+                    {
+                        hasRecentAutonomy = true;
+                        break;
+                    }
                 }
             }
 
@@ -7266,7 +7352,7 @@ namespace TeslaCamViewer
                 return false;
             }
 
-            if (rangeEnd >= durationSeconds - 1.0)
+            if (rangeEnd >= durationSeconds - 1.0 && rangeDuration <= AutonomyParkingTailMaxDurationSeconds)
             {
                 return true;
             }
