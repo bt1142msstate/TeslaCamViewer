@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.IO.Compression;
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,11 +12,13 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.System;
@@ -41,6 +44,14 @@ namespace TeslaCamViewer
         private string _watchedTeslaCamPath = "";
         private int _scanRequestVersion = 0;
         private bool _isAutoAdvancing = false;
+        private bool _isCollageMode = false;
+        private bool _isSyncingClipSelection = false;
+        private bool _isResizingSidebar = false;
+        private bool _isSidebarResizeEdgePointerOver = false;
+        private double _sidebarResizeStartX = 0.0;
+        private double _sidebarResizeStartWidth = 320.0;
+        private readonly HashSet<string> _thumbnailJobs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly SemaphoreSlim _thumbnailSemaphore = new SemaphoreSlim(1, 1);
         private List<SeiMetadata> _activeTelemetry = new List<SeiMetadata>();
         private List<double> _activeSegmentStarts = new List<double>();
         private List<double> _activeSegmentDurations = new List<double>();
@@ -75,6 +86,11 @@ namespace TeslaCamViewer
         private const double SoftSyncThresholdSec = 0.06;
         private const double HardSyncThresholdSec = 0.45;
         private const double RecentClipSessionGapSeconds = 90;
+        private const double SidebarMinWidth = 300.0;
+        private const double SidebarMaxWidth = 720.0;
+        private const double MainContentMinWidth = 760.0;
+        private const int IdcArrow = 32512;
+        private const int IdcSizeWestEast = 32644;
         private const int StitchCacheMaxAgeDays = 14;
         private const long StitchCacheMaxBytes = 64L * 1024L * 1024L * 1024L;
         private const long StitchCacheMinFreeBytes = 12L * 1024L * 1024L * 1024L;
@@ -82,6 +98,12 @@ namespace TeslaCamViewer
         // Blinker flash helper
         private bool _blinkerFlashState = false;
         private DispatcherTimer _blinkerTimer;
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr LoadCursor(IntPtr hInstance, int lpCursorName);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetCursor(IntPtr hCursor);
 
         public MainWindow()
         {
@@ -259,6 +281,7 @@ namespace TeslaCamViewer
                 _allClips.Clear();
                 _filteredClips.Clear();
                 ClipsListView.ItemsSource = _filteredClips;
+                ClipsCollageView.ItemsSource = _filteredClips;
             }
 
             Task.Run(() =>
@@ -873,11 +896,15 @@ namespace TeslaCamViewer
                 .ToList();
 
             ClipsListView.ItemsSource = _filteredClips;
+            ClipsCollageView.ItemsSource = _filteredClips;
             EmptyStateText.Visibility = _filteredClips.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             if (_filteredClips.Count == 0)
             {
                 EmptyStateText.Text = $"No clips found in {_activeCategory}.";
             }
+
+            UpdateClipViewMode();
+            QueueThumbnailsForRealizedClips();
         }
 
         private bool ClipMatchesSearch(TeslaClip clip, string query)
@@ -897,6 +924,251 @@ namespace TeslaCamViewer
             });
 
             return searchable.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private void QueueThumbnailsForRealizedClips()
+        {
+            if (!_isCollageMode || ClipsCollageView == null || ClipsCollageView.Items == null)
+            {
+                return;
+            }
+
+            try
+            {
+                foreach (object item in ClipsCollageView.Items)
+                {
+                    if (item is TeslaClip clip && ClipsCollageView.ContainerFromItem(item) != null)
+                    {
+                        QueueThumbnailForClip(clip);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Queue realized thumbnails", ex);
+            }
+        }
+
+        private void QueueThumbnailForClip(TeslaClip clip)
+        {
+            if (clip == null || clip.ThumbnailSource != null || _isWindowClosing)
+            {
+                return;
+            }
+
+            string sourceVideo = GetClipThumbnailSourceVideoPath(clip);
+            if (string.IsNullOrWhiteSpace(sourceVideo))
+            {
+                return;
+            }
+
+            string thumbnailPath = GetClipThumbnailPath(clip);
+            if (File.Exists(thumbnailPath) && new FileInfo(thumbnailPath).Length > 0)
+            {
+                SetClipThumbnailSource(clip, thumbnailPath);
+                return;
+            }
+
+            lock (_thumbnailJobs)
+            {
+                if (!_thumbnailJobs.Add(thumbnailPath))
+                {
+                    return;
+                }
+            }
+
+            _ = Task.Run(async () =>
+            {
+                await _thumbnailSemaphore.WaitAsync();
+                try
+                {
+                    string ffmpegPath = FindFfmpegExecutable();
+                    if (string.IsNullOrWhiteSpace(ffmpegPath))
+                    {
+                        return;
+                    }
+
+                    if (GenerateClipThumbnail(ffmpegPath, sourceVideo, thumbnailPath))
+                    {
+                        DispatcherQueue.TryEnqueue(() =>
+                        {
+                            if (!_isWindowClosing)
+                            {
+                                SetClipThumbnailSource(clip, thumbnailPath);
+                            }
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!_isWindowClosing)
+                    {
+                        CrashLogger.Log("Queue clip thumbnail", ex);
+                    }
+                }
+                finally
+                {
+                    lock (_thumbnailJobs)
+                    {
+                        _thumbnailJobs.Remove(thumbnailPath);
+                    }
+
+                    _thumbnailSemaphore.Release();
+                }
+            });
+        }
+
+        private string GetClipThumbnailSourceVideoPath(TeslaClip clip)
+        {
+            try
+            {
+                TeslaClipSegment firstSegment = clip?.Segments?
+                    .OrderBy(segment => segment.Timestamp)
+                    .FirstOrDefault(segment => segment?.Cameras != null && segment.Cameras.Count > 0);
+
+                if (firstSegment?.Cameras == null)
+                {
+                    return null;
+                }
+
+                foreach (string camera in GetCameraOrder())
+                {
+                    if (firstSegment.Cameras.TryGetValue(camera, out string path) && File.Exists(path))
+                    {
+                        return path;
+                    }
+                }
+
+                return firstSegment.Cameras.Values.FirstOrDefault(File.Exists);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private string GetClipThumbnailPath(TeslaClip clip)
+        {
+            string root = GetThumbnailCacheRoot();
+            Directory.CreateDirectory(root);
+            string key = ComputeClipCacheKey(clip, clip?.Segments ?? new List<TeslaClipSegment>());
+            return Path.Combine(root, $"{key}.jpg");
+        }
+
+        private string GetThumbnailCacheRoot()
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(localAppData, "TeslaCamViewer", "ClipThumbnails");
+        }
+
+        private bool GenerateClipThumbnail(string ffmpegPath, string sourceVideo, string thumbnailPath)
+        {
+            if (string.IsNullOrWhiteSpace(ffmpegPath) || string.IsNullOrWhiteSpace(sourceVideo) || !File.Exists(sourceVideo))
+            {
+                return false;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(thumbnailPath));
+                string tempPath = Path.Combine(
+                    Path.GetDirectoryName(thumbnailPath),
+                    $"{Path.GetFileNameWithoutExtension(thumbnailPath)}.{Guid.NewGuid():N}.tmp.jpg");
+
+                try
+                {
+                    var psi = new ProcessStartInfo(ffmpegPath)
+                    {
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardError = true,
+                        RedirectStandardOutput = true
+                    };
+
+                    psi.ArgumentList.Add("-hide_banner");
+                    psi.ArgumentList.Add("-loglevel");
+                    psi.ArgumentList.Add("error");
+                    psi.ArgumentList.Add("-y");
+                    psi.ArgumentList.Add("-i");
+                    psi.ArgumentList.Add(sourceVideo);
+                    psi.ArgumentList.Add("-frames:v");
+                    psi.ArgumentList.Add("1");
+                    psi.ArgumentList.Add("-vf");
+                    psi.ArgumentList.Add("scale=320:-1");
+                    psi.ArgumentList.Add("-q:v");
+                    psi.ArgumentList.Add("3");
+                    psi.ArgumentList.Add(tempPath);
+
+                    using (var process = new Process { StartInfo = psi })
+                    {
+                        process.Start();
+                        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+                        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+                        var timeout = Stopwatch.StartNew();
+                        bool exited = false;
+
+                        while (!exited)
+                        {
+                            if (_isWindowClosing)
+                            {
+                                TryKillProcess(process);
+                                return false;
+                            }
+
+                            exited = process.WaitForExit(150);
+                            if (!exited && timeout.Elapsed > TimeSpan.FromSeconds(25))
+                            {
+                                TryKillProcess(process);
+                                CrashLogger.LogMessage("Clip thumbnail", $"Timed out generating thumbnail for {sourceVideo}");
+                                return false;
+                            }
+                        }
+
+                        string stderr = SafeGetTaskResult(stderrTask);
+                        _ = SafeGetTaskResult(stdoutTask);
+                        if (process.ExitCode != 0)
+                        {
+                            CrashLogger.LogMessage("Clip thumbnail", $"Failed generating thumbnail for {sourceVideo}: {stderr}");
+                            return false;
+                        }
+                    }
+
+                    var tempInfo = new FileInfo(tempPath);
+                    if (!tempInfo.Exists || tempInfo.Length == 0)
+                    {
+                        return false;
+                    }
+
+                    File.Move(tempPath, thumbnailPath, overwrite: true);
+                    return true;
+                }
+                finally
+                {
+                    TryDeleteFile(tempPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Generate clip thumbnail", ex);
+                return false;
+            }
+        }
+
+        private void SetClipThumbnailSource(TeslaClip clip, string thumbnailPath)
+        {
+            try
+            {
+                if (clip == null || string.IsNullOrWhiteSpace(thumbnailPath) || !File.Exists(thumbnailPath))
+                {
+                    return;
+                }
+
+                clip.ThumbnailSource = new BitmapImage(new Uri(thumbnailPath, UriKind.Absolute));
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Set clip thumbnail source", ex);
+            }
         }
 
         private CancellationToken BeginNewStitchOperation()
@@ -2123,7 +2395,10 @@ namespace TeslaCamViewer
                 HudSpeed.Text = double.IsNaN(speedMph) ? "00" : Math.Round(speedMph).ToString("00");
 
                 // 2. Autopilot Autonomy states
-                if (data.AutopilotState > 0)
+                string inactiveDriveState = GetInactiveDriveStateText(data);
+                bool isStationaryOrParked = inactiveDriveState == "PARKED" || inactiveDriveState == "IDLE";
+
+                if (data.AutopilotState > 0 && !isStationaryOrParked)
                 {
                     BadgeDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 48, 209, 88));
                     BadgeText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 200, 250));
@@ -2153,8 +2428,8 @@ namespace TeslaCamViewer
                     BadgeDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 123, 132, 146));
                     BadgeText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 203, 213, 225));
                     AutonomyBadge.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(64, 255, 255, 255));
-                    BadgeText.Text = "AUTONOMY: MANUAL";
-                    HudApText.Text = "MANUAL";
+                    BadgeText.Text = inactiveDriveState == "MANUAL" ? "AUTONOMY: MANUAL" : $"STATE: {inactiveDriveState}";
+                    HudApText.Text = inactiveDriveState;
                     HudApText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 203, 213, 225));
                 }
 
@@ -2221,8 +2496,8 @@ namespace TeslaCamViewer
             BadgeDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 123, 132, 146));
             BadgeText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 203, 213, 225));
             AutonomyBadge.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(64, 255, 255, 255));
-            BadgeText.Text = "AUTONOMY: MANUAL";
-            HudApText.Text = "MANUAL";
+            BadgeText.Text = "STATE: PARKED";
+            HudApText.Text = "PARKED";
             HudApText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 203, 213, 225));
             SteerRotateTransform.Angle = 0;
             AccelBar.Height = 0;
@@ -2267,6 +2542,18 @@ namespace TeslaCamViewer
             return $"{direction} {Math.Abs(steeringWheelAngle).ToString("0.0", CultureInfo.InvariantCulture)}\u00B0";
         }
 
+        private string GetInactiveDriveStateText(SeiMetadata data)
+        {
+            if (data == null || IsParkGear(data.GearState))
+            {
+                return "PARKED";
+            }
+
+            double speedMph = GetDisplaySpeedMph(data);
+            bool isMoving = !double.IsNaN(speedMph) && !double.IsInfinity(speedMph) && speedMph >= 0.5;
+            return isMoving ? "MANUAL" : "IDLE";
+        }
+
         private double GetSignedSpeedMph(SeiMetadata data)
         {
             if (data == null)
@@ -2297,6 +2584,11 @@ namespace TeslaCamViewer
             }
 
             return speedMph;
+        }
+
+        private bool IsParkGear(uint gearState)
+        {
+            return gearState == 0;
         }
 
         private bool IsDriveGear(uint gearState)
@@ -3944,6 +4236,187 @@ namespace TeslaCamViewer
             }
         }
 
+        private void SidebarResizeHandle_PointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            try
+            {
+                var handle = sender as UIElement;
+                var root = Content as FrameworkElement;
+                if (handle == null || root == null || SidebarColumn == null)
+                {
+                    return;
+                }
+
+                _isResizingSidebar = true;
+                SetSidebarResizeHighlight(true);
+                _sidebarResizeStartX = e.GetCurrentPoint(root).Position.X;
+                _sidebarResizeStartWidth = SidebarColumn.ActualWidth > 0.0
+                    ? SidebarColumn.ActualWidth
+                    : SidebarColumn.Width.Value;
+
+                handle.CapturePointer(e.Pointer);
+                e.Handled = true;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Sidebar resize pointer pressed", ex);
+            }
+        }
+
+        private void SidebarResizeHandle_PointerEntered(object sender, PointerRoutedEventArgs e)
+        {
+            try
+            {
+                _isSidebarResizeEdgePointerOver = true;
+                SetSidebarResizeHighlight(true);
+                SetSystemCursor(IdcSizeWestEast);
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Sidebar resize pointer entered", ex);
+            }
+        }
+
+        private void SidebarResizeHandle_PointerExited(object sender, PointerRoutedEventArgs e)
+        {
+            try
+            {
+                _isSidebarResizeEdgePointerOver = false;
+                if (!_isResizingSidebar)
+                {
+                    SetSidebarResizeHighlight(false);
+                    SetSystemCursor(IdcArrow);
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Sidebar resize pointer exited", ex);
+            }
+        }
+
+        private void SidebarResizeHandle_PointerMoved(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_isResizingSidebar)
+            {
+                return;
+            }
+
+            try
+            {
+                var root = Content as FrameworkElement;
+                if (root == null || SidebarColumn == null)
+                {
+                    return;
+                }
+
+                SetSystemCursor(IdcSizeWestEast);
+                double pointerX = e.GetCurrentPoint(root).Position.X;
+                double delta = pointerX - _sidebarResizeStartX;
+                double maxWidthForWindow = Math.Max(SidebarMinWidth, root.ActualWidth - MainContentMinWidth);
+                double maxWidth = Math.Min(SidebarMaxWidth, maxWidthForWindow);
+                double targetWidth = Math.Max(SidebarMinWidth, Math.Min(maxWidth, _sidebarResizeStartWidth + delta));
+
+                SidebarColumn.Width = new GridLength(targetWidth, GridUnitType.Pixel);
+                e.Handled = true;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Sidebar resize pointer moved", ex);
+            }
+        }
+
+        private void SidebarResizeHandle_PointerReleased(object sender, PointerRoutedEventArgs e)
+        {
+            EndSidebarResize(sender as UIElement, e);
+        }
+
+        private void SidebarResizeHandle_PointerCanceled(object sender, PointerRoutedEventArgs e)
+        {
+            EndSidebarResize(sender as UIElement, e);
+        }
+
+        private void EndSidebarResize(UIElement handle, PointerRoutedEventArgs e)
+        {
+            try
+            {
+                _isResizingSidebar = false;
+                handle?.ReleasePointerCapture(e.Pointer);
+                SetSidebarResizeHighlight(_isSidebarResizeEdgePointerOver);
+                SetSystemCursor(_isSidebarResizeEdgePointerOver ? IdcSizeWestEast : IdcArrow);
+                e.Handled = true;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Sidebar resize ended", ex);
+            }
+        }
+
+        private void SetSidebarResizeHighlight(bool isVisible)
+        {
+            if (SidebarResizeHighlight != null)
+            {
+                SidebarResizeHighlight.Opacity = isVisible ? 0.95 : 0.0;
+            }
+        }
+
+        private void SetSystemCursor(int cursorId)
+        {
+            try
+            {
+                IntPtr cursor = LoadCursor(IntPtr.Zero, cursorId);
+                if (cursor != IntPtr.Zero)
+                {
+                    SetCursor(cursor);
+                }
+            }
+            catch { }
+        }
+
+        private void ClipViewMode_Checked(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var toggle = sender as ToggleButton;
+                if (toggle == null || ClipListModeButton == null || ClipCollageModeButton == null) return;
+
+                ClipListModeButton.IsChecked = toggle == ClipListModeButton;
+                ClipCollageModeButton.IsChecked = toggle == ClipCollageModeButton;
+                _isCollageMode = toggle == ClipCollageModeButton;
+
+                UpdateClipViewMode();
+                QueueThumbnailsForRealizedClips();
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Clip view mode checked", ex);
+            }
+        }
+
+        private void UpdateClipViewMode()
+        {
+            if (ClipsListView == null || ClipsCollageView == null) return;
+
+            ClipsListView.Visibility = _isCollageMode ? Visibility.Collapsed : Visibility.Visible;
+            ClipsCollageView.Visibility = _isCollageMode ? Visibility.Visible : Visibility.Collapsed;
+
+            TeslaClip selected = _activeClip;
+            if (selected != null && !_filteredClips.Contains(selected))
+            {
+                selected = null;
+            }
+
+            _isSyncingClipSelection = true;
+            try
+            {
+                ClipsListView.SelectedItem = selected;
+                ClipsCollageView.SelectedItem = selected;
+            }
+            finally
+            {
+                _isSyncingClipSelection = false;
+            }
+        }
+
         private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             try
@@ -3960,9 +4433,30 @@ namespace TeslaCamViewer
         {
             try
             {
-                var selected = ClipsListView.SelectedItem as TeslaClip;
+                if (_isSyncingClipSelection) return;
+
+                var selector = sender as Selector;
+                var selected = selector?.SelectedItem as TeslaClip;
                 if (selected != null)
                 {
+                    _isSyncingClipSelection = true;
+                    try
+                    {
+                        if (!ReferenceEquals(sender, ClipsListView))
+                        {
+                            ClipsListView.SelectedItem = selected;
+                        }
+
+                        if (!ReferenceEquals(sender, ClipsCollageView))
+                        {
+                            ClipsCollageView.SelectedItem = selected;
+                        }
+                    }
+                    finally
+                    {
+                        _isSyncingClipSelection = false;
+                    }
+
                     bool keepPlaying = _isAutoAdvancing || isPlaying;
                     _isAutoAdvancing = false;
                     SelectClip(selected, keepPlaying);
@@ -3976,6 +4470,11 @@ namespace TeslaCamViewer
 
         private void ClipsListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
         {
+            if (sender == ClipsCollageView && !args.InRecycleQueue && args.Item is TeslaClip clip)
+            {
+                QueueThumbnailForClip(clip);
+            }
+
 #if DEBUG
             try
             {
@@ -4348,8 +4847,12 @@ namespace TeslaCamViewer
         public double EstimatedDurationSeconds { get; set; } = 60.0;
     }
 
-    public class TeslaClip
+    public class TeslaClip : INotifyPropertyChanged
     {
+        private ImageSource _thumbnailSource;
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
         public string Timestamp { get; set; }
         public string Category { get; set; }
         public string Title { get; set; }
@@ -4358,6 +4861,19 @@ namespace TeslaCamViewer
         public string DurationText { get; set; }
         public string ClipTypeText { get; set; }
         public List<TeslaClipSegment> Segments { get; set; } = new List<TeslaClipSegment>();
+
+        public ImageSource ThumbnailSource
+        {
+            get => _thumbnailSource;
+            set
+            {
+                if (!ReferenceEquals(_thumbnailSource, value))
+                {
+                    _thumbnailSource = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ThumbnailSource)));
+                }
+            }
+        }
 
         public string SegmentCountText
         {

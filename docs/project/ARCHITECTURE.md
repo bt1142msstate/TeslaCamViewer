@@ -134,6 +134,10 @@ Planned components:
 - Category and flagging engine.
 
 The intended design is local-first. Cloud visual context must be opt-in and scoped to user-selected clips or ranges.
+Local visual context should detect suitable GPU or NPU hardware before enabling
+on-device analysis. Users without suitable hardware should be able to keep using
+the free core viewer and may later opt into cloud-based analysis through a
+subscription path.
 
 ## Data Storage
 

@@ -17,7 +17,13 @@ This roadmap describes intended product direction. It is not a promise that ever
 
 ## Visual Context
 
-Visual context is planned as a major feature. The goal is to index local clips and create searchable video metadata.
+Visual context is planned as a major feature. The goal is to index local clips
+and create searchable video metadata.
+
+Local visual context will require capable GPU or NPU hardware for practical
+on-device analysis. Users without suitable hardware should still be able to use
+the free core viewer, with cloud-based visual context offered later as an
+optional subscription path.
 
 Planned local visual context features:
 
@@ -30,11 +36,14 @@ Planned local visual context features:
   visual preview for each drive or segment.
 - Explore a gallery-style clip browsing mode for scanning visual context across
   many clips quickly.
-- Keep local analysis available without requiring a subscription.
+- Keep local analysis available without requiring a subscription on compatible
+  GPU or NPU hardware.
 
 Planned optional subscription features for the free Windows Store version:
 
 - Faster and more accurate visual context through Gemini.
+- Cloud-based visual context for devices without suitable local GPU or NPU
+  hardware.
 - Cloud-assisted summaries and question answering over selected clips.
 - Richer event categorization and metadata extraction.
 - Optional Tesla API integrations for vehicle-aware context.

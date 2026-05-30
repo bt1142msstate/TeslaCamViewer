@@ -18,7 +18,7 @@
 
         <Grid.ColumnDefinitions>
             <!-- Sidebar Width -->
-            <ColumnDefinition Width="320"/>
+            <ColumnDefinition x:Name="SidebarColumn" Width="320" MinWidth="300" MaxWidth="720"/>
             <!-- Main Content Area -->
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
@@ -35,6 +35,7 @@
                     <RowDefinition Height="Auto"/> <!-- Dir Selector -->
                     <RowDefinition Height="Auto"/> <!-- Category Tabs -->
                     <RowDefinition Height="Auto"/> <!-- Search -->
+                    <RowDefinition Height="Auto"/> <!-- Clip View Mode -->
                     <RowDefinition Height="*"/>    <!-- Clips List -->
                 </Grid.RowDefinitions>
 
@@ -154,10 +155,22 @@
                 </Border>
 
                 <!-- Search box -->
-                <TextBox x:Name="SearchBox" Grid.Row="3" PlaceholderText="Search clips..." TextChanged="SearchBox_TextChanged" Background="{StaticResource GlassSidebarInputBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" Foreground="{StaticResource SidebarTextPrimaryBrush}" PlaceholderForeground="{StaticResource SidebarTextMutedBrush}" Margin="0,0,0,16" CornerRadius="8"/>
+                <TextBox x:Name="SearchBox" Grid.Row="3" PlaceholderText="Search clips..." TextChanged="SearchBox_TextChanged" Background="{StaticResource GlassSidebarInputBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" Foreground="{StaticResource SidebarTextPrimaryBrush}" PlaceholderForeground="{StaticResource SidebarTextMutedBrush}" Margin="0,0,0,10" CornerRadius="8"/>
+
+                <!-- Clip view mode -->
+                <Border Grid.Row="4" Background="{StaticResource GlassSidebarInputBrush}" Padding="4" CornerRadius="8" Margin="0,0,0,12" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton x:Name="ClipListModeButton" Grid.Column="0" Content="LIST" IsChecked="True" Checked="ClipViewMode_Checked" HorizontalAlignment="Stretch" Background="Transparent" BorderThickness="0" Foreground="{StaticResource SidebarTextSecondaryBrush}" FontSize="10" FontWeight="Bold"/>
+                        <ToggleButton x:Name="ClipCollageModeButton" Grid.Column="1" Content="COLLAGE" Checked="ClipViewMode_Checked" HorizontalAlignment="Stretch" Background="Transparent" BorderThickness="0" Foreground="{StaticResource SidebarTextSecondaryBrush}" FontSize="10" FontWeight="Bold"/>
+                    </Grid>
+                </Border>
 
                 <!-- Clips list -->
-                <Grid Grid.Row="4">
+                <Grid Grid.Row="5">
                     <ListView x:Name="ClipsListView"
                               SelectionChanged="ClipsListView_SelectionChanged"
                               ContainerContentChanging="ClipsListView_ContainerContentChanging"
@@ -241,10 +254,104 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
+                    <GridView x:Name="ClipsCollageView"
+                              SelectionChanged="ClipsListView_SelectionChanged"
+                              ContainerContentChanging="ClipsListView_ContainerContentChanging"
+                              Visibility="Collapsed"
+                              Background="Transparent"
+                              Padding="0"
+                              SelectionMode="Single"
+                              ShowsScrollingPlaceholders="True"
+                              ScrollViewer.VerticalScrollMode="Enabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ScrollViewer.HorizontalScrollMode="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <GridView.Resources>
+                            <SolidColorBrush x:Key="GridViewItemBackground" Color="Transparent"/>
+                            <SolidColorBrush x:Key="GridViewItemBackgroundPointerOver" Color="#24FFFFFF"/>
+                            <SolidColorBrush x:Key="GridViewItemBackgroundPressed" Color="#34FFFFFF"/>
+                            <SolidColorBrush x:Key="GridViewItemBackgroundSelected" Color="#365AC8FA"/>
+                            <SolidColorBrush x:Key="GridViewItemBackgroundSelectedPointerOver" Color="#4A5AC8FA"/>
+                            <SolidColorBrush x:Key="GridViewItemBackgroundSelectedPressed" Color="#625AC8FA"/>
+                            <SolidColorBrush x:Key="GridViewItemForegroundPointerOver" Color="#FFFFFFFF"/>
+                            <SolidColorBrush x:Key="GridViewItemForegroundSelected" Color="#FFFFFFFF"/>
+                            <SolidColorBrush x:Key="GridViewItemSelectionIndicatorBrush" Color="#FFFFFFFF"/>
+                            <x:Boolean x:Key="GridViewItemSelectionCheckMarkVisualEnabled">False</x:Boolean>
+                            <x:Boolean x:Key="GridViewItemSelectionIndicatorVisualEnabled">True</x:Boolean>
+                            <CornerRadius x:Key="GridViewItemCornerRadius">10</CornerRadius>
+                        </GridView.Resources>
+                        <GridView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsWrapGrid Orientation="Horizontal" ItemWidth="122" ItemHeight="142"/>
+                            </ItemsPanelTemplate>
+                        </GridView.ItemsPanel>
+                        <GridView.ItemContainerStyle>
+                            <Style TargetType="GridViewItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0,2,2,4"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="MinHeight" Value="0"/>
+                            </Style>
+                        </GridView.ItemContainerStyle>
+                        <GridView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Width="116" Height="136" Background="{StaticResource GlassSidebarCardBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1" CornerRadius="9" Padding="6" HorizontalAlignment="Center">
+                                    <Grid RowSpacing="6">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="66"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Border Background="{StaticResource GlassSidebarInputBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1" CornerRadius="7" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                            <Grid>
+                                                <TextBlock Text="Preview" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource SidebarTextMutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                <Image Source="{Binding ThumbnailSource}" Stretch="UniformToFill"/>
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock Grid.Row="1" Text="{Binding DateText}" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource SidebarTextPrimaryBrush}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                        <Grid Grid.Row="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding TimeRangeText}" FontSize="9" FontWeight="Bold" Foreground="{StaticResource SidebarTextPrimaryBrush}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding DurationText}" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource SidebarAccentBrush}" Margin="6,0,0,0"/>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
                     <TextBlock x:Name="EmptyStateText" Text="No clips loaded. Select a path and click SCAN." Foreground="{StaticResource SidebarTextSecondaryBrush}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="10"/>
                     <ProgressRing x:Name="ScanProgressRing" IsActive="False" Width="30" Height="30" Foreground="{StaticResource SidebarAccentBrush}"/>
                 </Grid>
             </Grid>
+        </Border>
+
+        <Border x:Name="SidebarResizeEdge"
+                Grid.Column="0"
+                Canvas.ZIndex="20"
+                Width="18"
+                Margin="0,18,0,18"
+                HorizontalAlignment="Right"
+                Background="Transparent"
+                PointerEntered="SidebarResizeHandle_PointerEntered"
+                PointerExited="SidebarResizeHandle_PointerExited"
+                PointerPressed="SidebarResizeHandle_PointerPressed"
+                PointerMoved="SidebarResizeHandle_PointerMoved"
+                PointerReleased="SidebarResizeHandle_PointerReleased"
+                PointerCanceled="SidebarResizeHandle_PointerCanceled"
+                ToolTipService.ToolTip="Drag sidebar edge to resize">
+            <Border x:Name="SidebarResizeHighlight"
+                    Width="4"
+                    Margin="0,10,12,10"
+                    HorizontalAlignment="Right"
+                    CornerRadius="2"
+                    Background="{StaticResource SidebarAccentBrush}"
+                    Opacity="0"/>
         </Border>
 
         <!-- ==========================================
@@ -556,7 +663,7 @@
                 <!-- Autopilot Wheel -->
                 <Border Grid.Column="1" Background="{StaticResource GlassPanelBrush}" BorderBrush="{StaticResource GlassBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="12" Margin="8,0,8,0" Height="140">
                     <Grid>
-                        <TextBlock Text="AUTOPILOT / FSD" FontSize="8" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                        <TextBlock Text="DRIVE STATE" FontSize="8" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Left" VerticalAlignment="Top"/>
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Margin="0,8,0,0">
                             <!-- Native steering wheel shape representation -->
                             <Grid Width="50" Height="50" x:Name="SteeringWheelGrid" RenderTransformOrigin="0.5,0.5">
@@ -564,12 +671,12 @@
                                     <RotateTransform Angle="0" x:Name="SteerRotateTransform"/>
                                 </Grid.RenderTransform>
                                 <Ellipse Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="4" Width="46" Height="46"/>
-                                <Line X1="25" Y1="2" X2="25" Y2="25" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="3"/>
-                                <Line X1="10" Y1="34" X2="25" Y2="25" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="3"/>
-                                <Line X1="40" Y1="34" X2="25" Y2="25" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="3"/>
+                                <Line X1="25" Y1="2" X2="25" Y2="25" Stroke="{StaticResource AccentCyanBrush}" StrokeThickness="4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                <Line X1="10" Y1="34" X2="25" Y2="25" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                <Line X1="40" Y1="34" X2="25" Y2="25" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                                 <Ellipse Fill="{StaticResource GlassControlBrush}" Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="2" Width="14" Height="14"/>
                             </Grid>
-                            <TextBlock x:Name="HudApText" Text="MANUAL" FontSize="9" FontWeight="Black" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" FontFamily="Consolas"/>
+                            <TextBlock x:Name="HudApText" Text="PARKED" FontSize="9" FontWeight="Black" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" FontFamily="Consolas"/>
                         </StackPanel>
                     </Grid>
                 </Border>

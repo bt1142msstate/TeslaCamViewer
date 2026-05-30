@@ -18,6 +18,7 @@ TESLA Cam is a Windows desktop viewer for TeslaCam footage. It is built with Win
 The core app is intended to stay free. The free version should not add ads,
 promotional overlays, export watermarks, or forced branding to your clips.
 Future subscriptions and donations may support cloud-assisted features,
+including visual context for devices without suitable GPU or NPU hardware,
 development, signing, hosting, testing, and upkeep, but they should be optional.
 
 This project is not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and related vehicle names are trademarks of their respective owners.
@@ -118,7 +119,8 @@ name that differs from this repository name. The free version should remain
 useful without a subscription and should not add ads, promotional overlays,
 export watermarks, or forced branding. A future optional subscription may add
 faster and more accurate cloud-assisted visual context using Gemini, plus Tesla
-API powered features. Donations may also be offered for people who want to
+API powered features, including cloud analysis for devices without suitable GPU
+or NPU hardware. Donations may also be offered for people who want to
 support development and upkeep.
 
 See [STORE_READINESS.md](docs/project/STORE_READINESS.md) for the current packaging and certification checklist.
