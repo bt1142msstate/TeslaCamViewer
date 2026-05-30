@@ -176,9 +176,35 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <ProgressRing x:Name="AppStatusProgressRing" Width="14" Height="14" IsActive="False" Visibility="Collapsed" Foreground="{StaticResource SidebarAccentBrush}" VerticalAlignment="Center"/>
                         <TextBlock x:Name="AppStatusText" Grid.Column="1" Text="Ready" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource SidebarTextSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        <Button x:Name="AppUpdateBtn"
+                                Grid.Column="2"
+                                Content="Update"
+                                Click="AppUpdateBtn_Click"
+                                Visibility="Collapsed"
+                                IsEnabled="False"
+                                Height="22"
+                                MinWidth="54"
+                                Padding="10,0,10,0"
+                                FontSize="10"
+                                FontWeight="Bold"
+                                Background="{StaticResource GlassControlBrush}"
+                                BorderBrush="{StaticResource GlassBorderSoftBrush}"
+                                Foreground="{StaticResource SidebarTextPrimaryBrush}"
+                                CornerRadius="11"
+                                ToolTipService.ToolTip="Install the latest GitHub release">
+                            <Button.Resources>
+                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#34FFFFFF"/>
+                                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#4AFFFFFF"/>
+                                <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#88FFFFFF"/>
+                                <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#B0FFFFFF"/>
+                                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFFFFFFF"/>
+                                <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FFFFFFFF"/>
+                            </Button.Resources>
+                        </Button>
                     </Grid>
                 </Border>
 

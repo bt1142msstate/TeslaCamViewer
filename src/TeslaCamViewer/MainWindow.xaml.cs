@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Text.Json;
 using System.Globalization;
@@ -22,6 +24,8 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.System;
+using Velopack;
+using Velopack.Sources;
 
 namespace TeslaCamViewer
 {
@@ -93,10 +97,19 @@ namespace TeslaCamViewer
         private double _activeLat = 0.0;
         private double _activeLon = 0.0;
         private bool _isWindowClosing = false;
+        private readonly HttpClient _updateHttpClient = new HttpClient();
+        private CancellationTokenSource _updateCancellation = new CancellationTokenSource();
+        private UpdateManager _updateManager;
+        private UpdateInfo _pendingVelopackUpdate;
+        private VelopackAsset _pendingVelopackAsset;
+        private GitHubSetupUpdateInfo _pendingSetupUpdate;
+        private bool _isCheckingForUpdates = false;
+        private bool _isApplyingUpdate = false;
 
         private const double SoftSyncThresholdSec = 0.06;
         private const double HardSyncThresholdSec = 0.45;
         private const double RecentClipSessionGapSeconds = 90;
+        private const int UpdateCheckDelayMs = 2500;
         private const double SidebarMinWidth = 300.0;
         private const double SidebarMaxWidth = 720.0;
         private const double MainContentMinWidth = 760.0;
@@ -108,6 +121,9 @@ namespace TeslaCamViewer
         private const int ClipTelemetrySummaryCacheSaveDelayMs = 1500;
         private const long StitchCacheMaxBytes = 64L * 1024L * 1024L * 1024L;
         private const long StitchCacheMinFreeBytes = 12L * 1024L * 1024L * 1024L;
+        private const string UpdateRepositoryUrl = "https://github.com/bt1142msstate/TeslaCamViewer";
+        private const string UpdateReleasesApiUrl = "https://api.github.com/repos/bt1142msstate/TeslaCamViewer/releases";
+        private const string SetupInstallerAssetSuffix = "-Setup.exe";
 
         // Blinker flash helper
         private bool _blinkerFlashState = false;
@@ -136,6 +152,7 @@ namespace TeslaCamViewer
             CleanupOwnedFfmpegProcesses();
             QueueStartupCleanup();
             LoadClipTelemetrySummaryCache();
+            ConfigureUpdateHttpClient();
 
             // Register KeyDown handler on Content Grid (since Window doesn't support KeyDown directly)
             var rootGrid = this.Content as Grid;
@@ -198,6 +215,7 @@ namespace TeslaCamViewer
             TimelineScrubberHost.SizeChanged += (s, e) => UpdateTimelineScrubberVisual();
 
             ResetCameraLayout();
+            QueueUpdateCheck();
 
             // Auto-detect TeslaCam folder on launch
             AutoDetectTeslaCam(initialScan: true);
@@ -206,6 +224,7 @@ namespace TeslaCamViewer
         private void MainWindow_Closed(object sender, WindowEventArgs args)
         {
             _isWindowClosing = true;
+            try { _updateCancellation?.Cancel(); } catch { }
             CancelActiveStitch();
             CancelClipTelemetrySummaryScan();
             CancelManualDrivingRangeScan();
@@ -215,6 +234,7 @@ namespace TeslaCamViewer
             try { _blinkerTimer?.Stop(); } catch { }
             try { _clipRefreshDebounceTimer?.Stop(); } catch { }
             StopTeslaCamWatcher();
+            try { _updateHttpClient?.Dispose(); } catch { }
 
             LaunchCleanupHelper(waitForCurrentProcess: true);
         }
@@ -1157,6 +1177,603 @@ namespace TeslaCamViewer
             AppStatusText.Text = string.IsNullOrWhiteSpace(text) ? "Ready" : text;
             AppStatusProgressRing.Visibility = isActive ? Visibility.Visible : Visibility.Collapsed;
             AppStatusProgressRing.IsActive = isActive;
+        }
+
+        private void ConfigureUpdateHttpClient()
+        {
+            try
+            {
+                _updateHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("TESLA-Cam-Updater");
+                _updateHttpClient.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Configure update HTTP client", ex);
+            }
+        }
+
+        private void QueueUpdateCheck()
+        {
+            CancellationToken token = _updateCancellation.Token;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(UpdateCheckDelayMs, token);
+                    await CheckForAppUpdateAsync(silent: true, token);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Log("Queue update check", ex);
+                }
+            }, token);
+        }
+
+        private async Task CheckForAppUpdateAsync(bool silent, CancellationToken cancellationToken)
+        {
+            if (_isWindowClosing || _isCheckingForUpdates || _isApplyingUpdate)
+            {
+                return;
+            }
+
+            _isCheckingForUpdates = true;
+
+            try
+            {
+                if (!silent)
+                {
+                    QueueAppStatus("Checking for updates", true);
+                    QueueUpdateButtonState(visible: true, enabled: false, label: "Checking");
+                }
+
+                VelopackAsset pendingAsset = TryGetPendingVelopackAsset();
+                if (pendingAsset != null)
+                {
+                    _pendingVelopackUpdate = null;
+                    _pendingVelopackAsset = pendingAsset;
+                    _pendingSetupUpdate = null;
+                    QueueUpdateAvailable($"Update ready {FormatVersionLabel(pendingAsset.Version?.ToString())}", "Restart");
+                    return;
+                }
+
+                UpdateInfo velopackUpdate = await TryCheckVelopackUpdateAsync();
+                cancellationToken.ThrowIfCancellationRequested();
+                if (velopackUpdate?.TargetFullRelease != null)
+                {
+                    _pendingVelopackUpdate = velopackUpdate;
+                    _pendingVelopackAsset = velopackUpdate.TargetFullRelease;
+                    _pendingSetupUpdate = null;
+                    QueueUpdateAvailable($"Update available {FormatVersionLabel(_pendingVelopackAsset.Version?.ToString())}", "Update");
+                    return;
+                }
+
+                GitHubSetupUpdateInfo setupUpdate = await TryCheckSetupInstallerUpdateAsync(cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (setupUpdate != null)
+                {
+                    _pendingVelopackUpdate = null;
+                    _pendingVelopackAsset = null;
+                    _pendingSetupUpdate = setupUpdate;
+                    QueueUpdateAvailable($"Update available {FormatVersionLabel(setupUpdate.TagName)}", "Update");
+                    return;
+                }
+
+                _pendingVelopackUpdate = null;
+                _pendingVelopackAsset = null;
+                _pendingSetupUpdate = null;
+
+                if (!silent)
+                {
+                    QueueAppStatus("TESLA Cam is up to date", false);
+                    QueueUpdateButtonState(visible: false, enabled: false, label: "Update");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Check app update", ex);
+                if (!silent)
+                {
+                    QueueAppStatus("Update check failed", false);
+                    QueueUpdateButtonState(visible: false, enabled: false, label: "Update");
+                }
+            }
+            finally
+            {
+                _isCheckingForUpdates = false;
+            }
+        }
+
+        private VelopackAsset TryGetPendingVelopackAsset()
+        {
+            try
+            {
+                UpdateManager manager = GetUpdateManager();
+                if (manager == null || !manager.IsInstalled)
+                {
+                    return null;
+                }
+
+                return manager.UpdatePendingRestart;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Check pending Velopack update", ex);
+                return null;
+            }
+        }
+
+        private async Task<UpdateInfo> TryCheckVelopackUpdateAsync()
+        {
+            try
+            {
+                UpdateManager manager = GetUpdateManager();
+                if (manager == null || !manager.IsInstalled)
+                {
+                    return null;
+                }
+
+                return await manager.CheckForUpdatesAsync();
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Check Velopack update", ex);
+                return null;
+            }
+        }
+
+        private UpdateManager GetUpdateManager()
+        {
+            if (_updateManager != null)
+            {
+                return _updateManager;
+            }
+
+            _updateManager = new UpdateManager(
+                new GithubSource(UpdateRepositoryUrl, string.Empty, prerelease: true));
+            return _updateManager;
+        }
+
+        private async Task<GitHubSetupUpdateInfo> TryCheckSetupInstallerUpdateAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                using var response = await _updateHttpClient.GetAsync(UpdateReleasesApiUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+                if (document.RootElement.ValueKind != JsonValueKind.Array)
+                {
+                    return null;
+                }
+
+                foreach (JsonElement release in document.RootElement.EnumerateArray())
+                {
+                    if (GetJsonBool(release, "draft"))
+                    {
+                        continue;
+                    }
+
+                    if (!TryGetJsonString(release, "tag_name", out string tagName) ||
+                        !IsReleaseNewerThanCurrent(tagName))
+                    {
+                        continue;
+                    }
+
+                    if (!release.TryGetProperty("assets", out JsonElement assets) ||
+                        assets.ValueKind != JsonValueKind.Array)
+                    {
+                        continue;
+                    }
+
+                    foreach (JsonElement asset in assets.EnumerateArray())
+                    {
+                        if (!TryGetJsonString(asset, "name", out string assetName) ||
+                            !assetName.EndsWith(SetupInstallerAssetSuffix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        if (TryGetJsonString(asset, "browser_download_url", out string downloadUrl))
+                        {
+                            return new GitHubSetupUpdateInfo
+                            {
+                                TagName = tagName,
+                                AssetName = assetName,
+                                DownloadUrl = downloadUrl
+                            };
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Check GitHub setup update", ex);
+            }
+
+            return null;
+        }
+
+        private async Task ApplyAvailableUpdateAsync()
+        {
+            if (_isWindowClosing || _isApplyingUpdate)
+            {
+                return;
+            }
+
+            CancellationToken cancellationToken = _updateCancellation.Token;
+            if (_pendingVelopackUpdate == null && _pendingVelopackAsset == null && _pendingSetupUpdate == null)
+            {
+                await CheckForAppUpdateAsync(silent: false, cancellationToken);
+                if (_pendingVelopackUpdate == null && _pendingVelopackAsset == null && _pendingSetupUpdate == null)
+                {
+                    return;
+                }
+            }
+
+            _isApplyingUpdate = true;
+            SetUpdateButtonState(visible: true, enabled: false, label: "Updating");
+
+            try
+            {
+                if (_pendingVelopackUpdate != null)
+                {
+                    UpdateManager manager = GetUpdateManager();
+                    SetAppStatus("Downloading update 0%", true);
+                    await manager.DownloadUpdatesAsync(_pendingVelopackUpdate, progress =>
+                    {
+                        DispatcherQueue?.TryEnqueue(() =>
+                        {
+                            if (!_isWindowClosing)
+                            {
+                                SetAppStatus($"Downloading update {progress}%", true);
+                            }
+                        });
+                    }, cancellationToken);
+
+                    _pendingVelopackAsset = _pendingVelopackUpdate.TargetFullRelease;
+                    _pendingVelopackUpdate = null;
+                    SetAppStatus("Restarting to update", true);
+                    await manager.WaitExitThenApplyUpdatesAsync(_pendingVelopackAsset, silent: false, restart: true);
+                    Close();
+                    return;
+                }
+
+                if (_pendingVelopackAsset != null)
+                {
+                    UpdateManager manager = GetUpdateManager();
+                    SetAppStatus("Restarting to update", true);
+                    await manager.WaitExitThenApplyUpdatesAsync(_pendingVelopackAsset, silent: false, restart: true);
+                    Close();
+                    return;
+                }
+
+                if (_pendingSetupUpdate != null)
+                {
+                    string installerPath = await DownloadSetupInstallerAsync(_pendingSetupUpdate, cancellationToken);
+                    SetAppStatus("Launching installer", true);
+                    LaunchSetupInstaller(installerPath);
+                    Close();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Apply app update", ex);
+                SetAppStatus("Update failed", false);
+                SetUpdateButtonState(visible: true, enabled: true, label: "Retry");
+            }
+            finally
+            {
+                if (!_isWindowClosing)
+                {
+                    _isApplyingUpdate = false;
+                }
+            }
+        }
+
+        private async Task<string> DownloadSetupInstallerAsync(GitHubSetupUpdateInfo update, CancellationToken cancellationToken)
+        {
+            if (update == null || string.IsNullOrWhiteSpace(update.DownloadUrl))
+            {
+                throw new InvalidOperationException("Update installer is unavailable.");
+            }
+
+            string updateDir = Path.Combine(
+                Path.GetTempPath(),
+                "TESLA-Cam",
+                "Updates",
+                SanitizeFileName(NormalizeVersionText(update.TagName)));
+            Directory.CreateDirectory(updateDir);
+
+            string installerPath = Path.Combine(updateDir, SanitizeFileName(update.AssetName));
+            string tempPath = installerPath + ".tmp";
+            TryDeleteFile(tempPath);
+
+            using var response = await _updateHttpClient.GetAsync(update.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            long? totalBytes = response.Content.Headers.ContentLength;
+            long readBytes = 0;
+            int lastPercent = -1;
+            byte[] buffer = new byte[1024 * 128];
+
+            using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var output = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, buffer.Length, useAsync: true);
+
+            while (true)
+            {
+                int read = await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                await output.WriteAsync(buffer, 0, read, cancellationToken);
+                readBytes += read;
+
+                if (totalBytes.GetValueOrDefault() > 0)
+                {
+                    int percent = (int)Math.Clamp((readBytes * 100.0) / totalBytes.Value, 0, 100);
+                    if (percent != lastPercent)
+                    {
+                        lastPercent = percent;
+                        QueueAppStatus($"Downloading update {percent}%", true);
+                    }
+                }
+                else if (lastPercent != 0)
+                {
+                    lastPercent = 0;
+                    QueueAppStatus("Downloading update", true);
+                }
+            }
+
+            File.Move(tempPath, installerPath, overwrite: true);
+            return installerPath;
+        }
+
+        private void LaunchSetupInstaller(string installerPath)
+        {
+            if (string.IsNullOrWhiteSpace(installerPath) || !File.Exists(installerPath))
+            {
+                throw new FileNotFoundException("Downloaded update installer was not found.", installerPath);
+            }
+
+            var psi = new ProcessStartInfo(installerPath)
+            {
+                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(installerPath)
+            };
+
+            Process.Start(psi);
+        }
+
+        private void QueueUpdateAvailable(string statusText, string buttonText)
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (_isWindowClosing)
+                {
+                    return;
+                }
+
+                SetAppStatus(statusText, false);
+                SetUpdateButtonState(visible: true, enabled: true, label: buttonText);
+            });
+        }
+
+        private void QueueAppStatus(string text, bool isActive)
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (!_isWindowClosing)
+                {
+                    SetAppStatus(text, isActive);
+                }
+            });
+        }
+
+        private void QueueUpdateButtonState(bool visible, bool enabled, string label)
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (!_isWindowClosing)
+                {
+                    SetUpdateButtonState(visible, enabled, label);
+                }
+            });
+        }
+
+        private void SetUpdateButtonState(bool visible, bool enabled, string label)
+        {
+            if (AppUpdateBtn == null)
+            {
+                return;
+            }
+
+            AppUpdateBtn.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            AppUpdateBtn.IsEnabled = enabled;
+            AppUpdateBtn.Content = string.IsNullOrWhiteSpace(label) ? "Update" : label;
+        }
+
+        private bool IsReleaseNewerThanCurrent(string releaseTag)
+        {
+            if (!TryParseSemanticVersion(releaseTag, out AppSemanticVersion latest))
+            {
+                return false;
+            }
+
+            if (!TryParseSemanticVersion(GetCurrentAppVersionText(), out AppSemanticVersion current))
+            {
+                return true;
+            }
+
+            return CompareSemanticVersions(latest, current) > 0;
+        }
+
+        private string GetCurrentAppVersionText()
+        {
+            string informationalVersion = Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion;
+            if (!string.IsNullOrWhiteSpace(informationalVersion))
+            {
+                return NormalizeVersionText(informationalVersion);
+            }
+
+            Version version = Assembly.GetExecutingAssembly().GetName().Version;
+            return version == null ? "" : $"{version.Major}.{version.Minor}.{version.Build}";
+        }
+
+        private static string FormatVersionLabel(string version)
+        {
+            string normalized = NormalizeVersionText(version);
+            return string.IsNullOrWhiteSpace(normalized) ? "" : $"v{normalized}";
+        }
+
+        private static string NormalizeVersionText(string version)
+        {
+            if (string.IsNullOrWhiteSpace(version))
+            {
+                return "";
+            }
+
+            string value = version.Trim();
+            if (value.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+            {
+                value = value.Substring(1);
+            }
+
+            int metadataIndex = value.IndexOf('+');
+            if (metadataIndex >= 0)
+            {
+                value = value.Substring(0, metadataIndex);
+            }
+
+            return value;
+        }
+
+        private static bool TryParseSemanticVersion(string version, out AppSemanticVersion semanticVersion)
+        {
+            semanticVersion = null;
+            string normalized = NormalizeVersionText(version);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            string[] releaseParts = normalized.Split(new[] { '-' }, 2);
+            string[] numericParts = releaseParts[0].Split('.');
+            if (numericParts.Length < 2 ||
+                !int.TryParse(numericParts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int major) ||
+                !int.TryParse(numericParts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int minor))
+            {
+                return false;
+            }
+
+            int patch = 0;
+            if (numericParts.Length >= 3 &&
+                !int.TryParse(numericParts[2], NumberStyles.None, CultureInfo.InvariantCulture, out patch))
+            {
+                return false;
+            }
+
+            semanticVersion = new AppSemanticVersion
+            {
+                Major = major,
+                Minor = minor,
+                Patch = patch,
+                Prerelease = releaseParts.Length > 1 ? releaseParts[1] : ""
+            };
+            return true;
+        }
+
+        private static int CompareSemanticVersions(AppSemanticVersion left, AppSemanticVersion right)
+        {
+            int major = left.Major.CompareTo(right.Major);
+            if (major != 0) return major;
+
+            int minor = left.Minor.CompareTo(right.Minor);
+            if (minor != 0) return minor;
+
+            int patch = left.Patch.CompareTo(right.Patch);
+            if (patch != 0) return patch;
+
+            return ComparePrereleaseVersions(left.Prerelease, right.Prerelease);
+        }
+
+        private static int ComparePrereleaseVersions(string left, string right)
+        {
+            bool leftEmpty = string.IsNullOrWhiteSpace(left);
+            bool rightEmpty = string.IsNullOrWhiteSpace(right);
+            if (leftEmpty && rightEmpty) return 0;
+            if (leftEmpty) return 1;
+            if (rightEmpty) return -1;
+
+            string[] leftParts = left.Split(new[] { '.', '-' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] rightParts = right.Split(new[] { '.', '-' }, StringSplitOptions.RemoveEmptyEntries);
+            int length = Math.Max(leftParts.Length, rightParts.Length);
+
+            for (int i = 0; i < length; i++)
+            {
+                if (i >= leftParts.Length) return -1;
+                if (i >= rightParts.Length) return 1;
+
+                bool leftNumeric = int.TryParse(leftParts[i], NumberStyles.None, CultureInfo.InvariantCulture, out int leftNumber);
+                bool rightNumeric = int.TryParse(rightParts[i], NumberStyles.None, CultureInfo.InvariantCulture, out int rightNumber);
+
+                if (leftNumeric && rightNumeric)
+                {
+                    int numberCompare = leftNumber.CompareTo(rightNumber);
+                    if (numberCompare != 0) return numberCompare;
+                    continue;
+                }
+
+                if (leftNumeric != rightNumeric)
+                {
+                    return leftNumeric ? -1 : 1;
+                }
+
+                int textCompare = string.Compare(leftParts[i], rightParts[i], StringComparison.OrdinalIgnoreCase);
+                if (textCompare != 0) return textCompare;
+            }
+
+            return 0;
+        }
+
+        private static bool TryGetJsonString(JsonElement element, string propertyName, out string value)
+        {
+            value = null;
+            if (element.ValueKind == JsonValueKind.Object &&
+                element.TryGetProperty(propertyName, out JsonElement property) &&
+                property.ValueKind == JsonValueKind.String)
+            {
+                value = property.GetString();
+            }
+
+            return !string.IsNullOrWhiteSpace(value);
+        }
+
+        private static bool GetJsonBool(JsonElement element, string propertyName)
+        {
+            return element.ValueKind == JsonValueKind.Object &&
+                   element.TryGetProperty(propertyName, out JsonElement property) &&
+                   property.ValueKind == JsonValueKind.True;
         }
 
         private CancellationToken BeginNewClipTelemetrySummaryScan()
@@ -4594,12 +5211,32 @@ namespace TeslaCamViewer
 
         private string SanitizeFileName(string fileName)
         {
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return "update";
+            }
+
             foreach (char invalid in Path.GetInvalidFileNameChars())
             {
                 fileName = fileName.Replace(invalid, '-');
             }
 
             return fileName;
+        }
+
+        private sealed class GitHubSetupUpdateInfo
+        {
+            public string TagName { get; set; }
+            public string AssetName { get; set; }
+            public string DownloadUrl { get; set; }
+        }
+
+        private sealed class AppSemanticVersion
+        {
+            public int Major { get; set; }
+            public int Minor { get; set; }
+            public int Patch { get; set; }
+            public string Prerelease { get; set; }
         }
 
         private sealed class ExportSlice
@@ -5004,6 +5641,11 @@ namespace TeslaCamViewer
             {
                 FlyoutBase.ShowAttachedFlyout(browseButton);
             }
+        }
+
+        private async void AppUpdateBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await ApplyAvailableUpdateAsync();
         }
 
         private async void BrowseFolderSource_Click(object sender, RoutedEventArgs e)
@@ -6020,6 +6662,10 @@ namespace TeslaCamViewer
     // --- 100% NATIVE C# TELEMETRY PROTOBUF DECODER ---
     public static class TeslaSeiParser
     {
+        private const float ManualDrivingSpeedThresholdMps = 0.22352f; // 0.5 mph
+        private const float AutonomyParkingTailMaxSpeedMps = 1.78816f; // 4 mph
+        private const double AutonomyParkingTailContextSeconds = 12.0;
+
         private readonly struct AutopilotTelemetrySample
         {
             public AutopilotTelemetrySample(double offsetSec, uint autopilotState, uint gearState, float vehicleSpeedMps, ulong frameSeqNo)
@@ -6484,17 +7130,13 @@ namespace TeslaCamViewer
                 : 60.0;
             var timeline = new AutopilotManualDrivingTimeline();
             double fallbackIntervalSeconds = duration / samples.Count;
+            var intervalStarts = new double[samples.Count];
+            var intervalEnds = new double[samples.Count];
+            var isManualDrivingSamples = new bool[samples.Count];
 
             for (int i = 0; i < samples.Count; i++)
             {
                 AutopilotTelemetrySample sample = samples[i];
-                bool isManualDriving = IsManualDrivingSample(sample);
-                if (i == 0)
-                {
-                    timeline.FirstIsManualDriving = isManualDriving;
-                }
-
-                timeline.LastIsManualDriving = isManualDriving;
                 timeline.TelemetryRecordCount++;
 
                 double intervalStart = i == 0 ? 0.0 : ClampTelemetryOffset(sample.OffsetSec, duration);
@@ -6507,11 +7149,44 @@ namespace TeslaCamViewer
                     intervalEnd = Math.Min(duration, intervalStart + fallbackIntervalSeconds);
                 }
 
+                intervalStarts[i] = intervalStart;
+                intervalEnds[i] = intervalEnd;
+                isManualDrivingSamples[i] = IsManualDrivingSample(sample);
+            }
+
+            int manualStartIndex = -1;
+            for (int i = 0; i <= samples.Count; i++)
+            {
+                bool isManualDriving = i < samples.Count && isManualDrivingSamples[i];
                 if (isManualDriving)
                 {
-                    AddManualTimelineRange(timeline.ManualRanges, intervalStart, intervalEnd);
+                    if (manualStartIndex < 0)
+                    {
+                        manualStartIndex = i;
+                    }
+
+                    continue;
+                }
+
+                if (manualStartIndex >= 0)
+                {
+                    int manualEndIndex = i - 1;
+                    if (!IsAutonomyParkingTail(samples, intervalStarts, intervalEnds, manualStartIndex, manualEndIndex, duration))
+                    {
+                        AddManualTimelineRange(
+                            timeline.ManualRanges,
+                            intervalStarts[manualStartIndex],
+                            intervalEnds[manualEndIndex]);
+                    }
+
+                    manualStartIndex = -1;
                 }
             }
+
+            timeline.FirstIsManualDriving = timeline.ManualRanges.Count > 0 &&
+                timeline.ManualRanges[0].StartSeconds <= 0.02;
+            timeline.LastIsManualDriving = timeline.ManualRanges.Count > 0 &&
+                timeline.ManualRanges[timeline.ManualRanges.Count - 1].EndSeconds >= duration - 0.02;
 
             return timeline;
         }
@@ -6536,15 +7211,95 @@ namespace TeslaCamViewer
             ranges.Add(new TimelineRange(startSeconds, endSeconds));
         }
 
-        private static bool IsManualDrivingSample(AutopilotTelemetrySample sample)
+        private static bool IsAutonomyParkingTail(
+            List<AutopilotTelemetrySample> samples,
+            double[] intervalStarts,
+            double[] intervalEnds,
+            int manualStartIndex,
+            int manualEndIndex,
+            double durationSeconds)
         {
-            if (sample.AutopilotState == 1)
+            if (samples == null ||
+                intervalStarts == null ||
+                intervalEnds == null ||
+                manualStartIndex <= 0 ||
+                manualEndIndex < manualStartIndex ||
+                manualEndIndex >= samples.Count)
             {
                 return false;
             }
 
-            bool isDriveOrReverse = sample.GearState == 1 || sample.GearState == 2;
-            if (!isDriveOrReverse)
+            float maxSpeedMps = 0.0f;
+            for (int i = manualStartIndex; i <= manualEndIndex; i++)
+            {
+                float speed = samples[i].VehicleSpeedMps;
+                if (!float.IsNaN(speed) && !float.IsInfinity(speed))
+                {
+                    maxSpeedMps = Math.Max(maxSpeedMps, Math.Abs(speed));
+                }
+            }
+
+            if (maxSpeedMps > AutonomyParkingTailMaxSpeedMps)
+            {
+                return false;
+            }
+
+            double rangeStart = intervalStarts[manualStartIndex];
+            double rangeEnd = intervalEnds[manualEndIndex];
+            bool hasRecentAutonomy = false;
+            for (int i = manualStartIndex - 1; i >= 0; i--)
+            {
+                if (rangeStart - intervalEnds[i] > AutonomyParkingTailContextSeconds)
+                {
+                    break;
+                }
+
+                if (IsAutonomyActiveSample(samples[i]))
+                {
+                    hasRecentAutonomy = true;
+                    break;
+                }
+            }
+
+            if (!hasRecentAutonomy)
+            {
+                return false;
+            }
+
+            if (rangeEnd >= durationSeconds - 1.0)
+            {
+                return true;
+            }
+
+            for (int i = manualEndIndex + 1; i < samples.Count; i++)
+            {
+                if (intervalStarts[i] - rangeEnd > AutonomyParkingTailContextSeconds)
+                {
+                    break;
+                }
+
+                if (IsParkedOrStoppedSample(samples[i]))
+                {
+                    return true;
+                }
+
+                if (IsAutonomyActiveSample(samples[i]))
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsManualDrivingSample(AutopilotTelemetrySample sample)
+        {
+            if (IsAutonomyActiveSample(sample))
+            {
+                return false;
+            }
+
+            if (!IsDriveOrReverseGear(sample.GearState))
             {
                 return false;
             }
@@ -6554,7 +7309,32 @@ namespace TeslaCamViewer
                 return false;
             }
 
-            return Math.Abs(sample.VehicleSpeedMps) >= 0.22352f; // 0.5 mph
+            return Math.Abs(sample.VehicleSpeedMps) >= ManualDrivingSpeedThresholdMps;
+        }
+
+        private static bool IsAutonomyActiveSample(AutopilotTelemetrySample sample)
+        {
+            return sample.AutopilotState > 0;
+        }
+
+        private static bool IsParkedOrStoppedSample(AutopilotTelemetrySample sample)
+        {
+            if (!IsDriveOrReverseGear(sample.GearState))
+            {
+                return true;
+            }
+
+            if (float.IsNaN(sample.VehicleSpeedMps) || float.IsInfinity(sample.VehicleSpeedMps))
+            {
+                return true;
+            }
+
+            return Math.Abs(sample.VehicleSpeedMps) < ManualDrivingSpeedThresholdMps;
+        }
+
+        private static bool IsDriveOrReverseGear(uint gearState)
+        {
+            return gearState == 1 || gearState == 2;
         }
 
         private static void NormalizeAutopilotSampleOffsets(List<AutopilotTelemetrySample> samples, double durationSeconds)

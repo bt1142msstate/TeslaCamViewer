@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using System;
 using System.Threading.Tasks;
+using Velopack;
 
 namespace TeslaCamViewer
 {
@@ -10,6 +11,7 @@ namespace TeslaCamViewer
 
         public App()
         {
+            VelopackApp.Build().Run();
             this.InitializeComponent();
             this.UnhandledException += App_UnhandledException;
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
