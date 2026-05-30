@@ -66,7 +66,8 @@ download the latest `TESLA-Cam-win-x64-portable.zip` from GitHub Releases,
 extract it anywhere under their user profile, and run `TeslaCamViewer.exe`.
 
 The portable zip includes the self-contained Windows app build and FFmpeg runtime
-used for stitching and export.
+used for export and any generated physical stitch artifacts. Normal drive review
+uses virtual playback so opening a long drive does not wait on FFmpeg stitching.
 
 ## Uninstall
 
@@ -88,8 +89,8 @@ desktop shortcuts, and local app data under:
 %LOCALAPPDATA%\TeslaCamViewer
 ```
 
-That local data folder contains generated thumbnails, stitched playback cache,
-archive import cache, and telemetry summary cache. To remove the app but keep
+That local data folder contains generated thumbnails, generated stitch/export
+artifacts, archive import cache, and telemetry summary cache. To remove the app but keep
 those local caches:
 
 ```powershell

@@ -2,9 +2,9 @@
 
 ## Overview
 
-TESLA Cam is a WinUI 3 desktop application that scans TeslaCam media, groups raw files into drive sessions, stitches camera streams for playback, displays telemetry, and exports selected ranges.
+TESLA Cam is a WinUI 3 desktop application that scans TeslaCam media, groups raw files into drive sessions, presents them through a virtual stitched playback timeline, displays telemetry, and exports selected ranges.
 
-The app is local-first. Video files, extracted archives, stitched playback files, telemetry parsing, and exports are handled on the user's machine unless a future opt-in cloud visual-context feature is enabled.
+The app is local-first. Video files, extracted archives, generated stitch/export artifacts, telemetry parsing, and exports are handled on the user's machine unless a future opt-in cloud visual-context feature is enabled.
 
 ## Repository Layout
 
@@ -57,7 +57,7 @@ Responsibilities:
 - Sidebar source selection, category tabs, search, and virtualized clip list.
 - Multi-camera playback layout.
 - Timeline scrubber, marker controls, export menu, and telemetry HUD.
-- User-facing status, loading, stitching, and export progress indicators.
+- User-facing status, loading, virtual playback, stitching/export, and export progress indicators.
 
 ## Source Scanner
 
@@ -84,16 +84,16 @@ Responsibilities:
 - Represent a drive or event clip.
 - Track camera paths by camera role.
 - Estimate segment durations before media players report exact durations.
-- Maintain the active stitched or raw playback segment list.
+- Maintain the active virtual playback segment list and exact per-camera timeline.
 
 ## Stitching And Cache
 
 Responsibilities:
 
-- Use bundled FFmpeg for stream-copy concatenation.
-- Cache stitched camera files under local app data.
-- Promote stitched playback when available.
-- Fall back to raw segment playback when stitching is unavailable.
+- Watch-time playback uses the raw segment list plus exact MP4-derived durations; it should not block on FFmpeg concatenation before a drive can be reviewed.
+- Use bundled FFmpeg for stream-copy concatenation when exporting or generating explicit stitch artifacts.
+- Cache generated stitch/export artifacts under local app data when they are created.
+- Keep virtual playback as the immediate fallback and primary review path.
 - Clean temporary stitch/export folders.
 
 FFmpeg metadata is tracked under `src/TeslaCamViewer/Tools/ffmpeg/`. Actual FFmpeg binaries are ignored and populated locally or by the release workflow.
@@ -143,7 +143,7 @@ subscription path.
 
 Current local storage:
 
-- Stitched cache: `%LOCALAPPDATA%\TeslaCamViewer`
+- Generated stitch/export cache: `%LOCALAPPDATA%\TeslaCamViewer`
 - Archive import cache: `%LOCALAPPDATA%\TeslaCamViewer\imports`
 - Local crash log in the app directory during development.
 

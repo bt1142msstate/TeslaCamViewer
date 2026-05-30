@@ -4,19 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TESLA Cam - Windows TeslaCam Viewer</title>
-  <meta name="description" content="Free source-available Windows TeslaCam viewer for exact-timed stitched drive playback, multi-camera review, telemetry indexing, FSD percentages, manual-driving timeline ranges, collage browsing, and export tools.">
-  <meta name="keywords" content="free TeslaCam viewer, Tesla dashcam, dashcam viewer, Sentry Mode, Windows TeslaCam app, WinUI 3, vehicle telemetry, FSD percentage, manual driving ranges, exact video timing, video stitching, FFmpeg, MP4 export, GitHub Releases, Windows installer, WinGet">
+  <meta name="description" content="Free source-available Windows TeslaCam viewer for exact-timed virtual stitched drive playback, multi-camera review, telemetry indexing, FSD percentages, manual-driving timeline ranges, collage browsing, and export tools.">
+  <meta name="keywords" content="free TeslaCam viewer, Tesla dashcam, dashcam viewer, Sentry Mode, Windows TeslaCam app, WinUI 3, vehicle telemetry, FSD percentage, manual driving ranges, exact video timing, virtual playback, video stitching, FFmpeg, MP4 export, GitHub Releases, Velopack, Windows installer, WinGet">
   <meta name="theme-color" content="#111418">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://bt1142msstate.github.io/TeslaCamViewer/">
   <meta property="og:title" content="TESLA Cam - Windows TeslaCam Viewer">
-  <meta property="og:description" content="Free TeslaCam drive review with exact-timed continuous multi-camera playback, telemetry indexing, yellow manual-driving ranges, collage browsing, and export tools. No export watermarks or forced branding.">
+  <meta property="og:description" content="Free TeslaCam drive review with exact-timed virtual continuous multi-camera playback, telemetry indexing, yellow manual-driving ranges, collage browsing, and export tools. No export watermarks or forced branding.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://bt1142msstate.github.io/TeslaCamViewer/screenshots/hero-desktop-daylight.png">
   <meta property="og:url" content="https://bt1142msstate.github.io/TeslaCamViewer/">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="TESLA Cam - Windows TeslaCam Viewer">
-  <meta name="twitter:description" content="Free exact-timed stitched TeslaCam playback, telemetry indexing, manual-driving ranges, collage browsing, and export tools with no export watermarks or forced branding.">
+  <meta name="twitter:description" content="Free exact-timed virtual stitched TeslaCam playback, telemetry indexing, manual-driving ranges, collage browsing, and export tools with no export watermarks or forced branding.">
   <meta name="twitter:image" content="https://bt1142msstate.github.io/TeslaCamViewer/screenshots/hero-desktop-daylight.png">
   <script type="application/ld+json">
   {
@@ -25,7 +25,7 @@
     "name": "TESLA Cam",
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Windows 10 or newer",
-    "description": "Free source-available Windows TeslaCam viewer for exact-timed stitched drive playback, multi-camera review, telemetry indexing, FSD percentages, manual-driving timeline ranges, collage browsing, and export tools.",
+    "description": "Free source-available Windows TeslaCam viewer for exact-timed virtual stitched drive playback, multi-camera review, telemetry indexing, FSD percentages, manual-driving timeline ranges, collage browsing, and export tools.",
     "softwareVersion": "0.1.0-preview.3",
     "author": {
       "@type": "Person",
@@ -789,7 +789,7 @@
     <div class="hero-inner">
       <p class="eyebrow">Windows TeslaCam viewer</p>
       <h1>TESLA Cam</h1>
-      <p class="tagline">Review a full drive as one exact-timed continuous multi-camera session with synchronized playback, embedded telemetry, FSD and manual-driving context, marker-based export, and a free core app that does not watermark your exports.</p>
+      <p class="tagline">Review a full drive as one exact-timed virtual continuous multi-camera session with synchronized playback, embedded telemetry, FSD and manual-driving context, marker-based export, and a free core app that does not watermark your exports.</p>
       <div class="hero-actions">
         <a class="button primary" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.3/TESLA-Cam-win-x64-Setup.exe">Download Setup</a>
         <a class="button" href="https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.3/TESLA-Cam-win-x64-portable.zip">Portable ZIP</a>
@@ -826,7 +826,7 @@
         <article class="feature-card">
           <small>Playback</small>
           <h3>Exact-Timed Drive Sessions</h3>
-          <p>Groups TeslaCam files into full drive sessions using MP4 sample and edit table timing, then stitches camera streams so a drive feels like one continuous video.</p>
+          <p>Groups TeslaCam files into full drive sessions using MP4 sample and edit table timing, then plays them through a virtual stitched timeline so long drives open quickly and still feel continuous.</p>
         </article>
         <article class="feature-card">
           <small>Camera Layout</small>
@@ -880,7 +880,7 @@
         <figure class="shot-frame">
           <img src="screenshots/app-playback-dashboard.png" alt="TESLA Cam playback dashboard showing daytime TeslaCam footage and telemetry cards">
           <figcaption class="shot-caption">
-            <span>Stitched playback dashboard</span>
+            <span>Virtual playback dashboard</span>
             <span class="pill">Daytime footage</span>
           </figcaption>
         </figure>
@@ -922,7 +922,7 @@
         <article class="install-panel">
           <span class="pill">Command Line</span>
           <h3>Script And WinGet Path</h3>
-          <p class="muted">The PowerShell scripts remain available for fallback install and full local cleanup, including stitched playback cache, archive imports, thumbnails, and telemetry summary cache. WinGet is planned after the package name, signed installer, and release identity are stable.</p>
+          <p class="muted">The PowerShell scripts remain available for fallback install and full local cleanup, including generated stitch/export artifacts, archive imports, thumbnails, and telemetry summary cache. WinGet is planned after the package name, signed installer, and release identity are stable.</p>
           <button class="command" type="button" data-copy-command="winget install --id BrandonTemple.FinalAppName -e" aria-label="Copy command">
             <code>winget install --id BrandonTemple.FinalAppName -e</code>
             <span class="copy-action" aria-hidden="true">

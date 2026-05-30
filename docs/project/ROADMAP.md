@@ -94,4 +94,4 @@ local viewer. The free version should not add ads, promotional overlays, export
 watermarks, or forced branding.
 
 A macOS version is also planned. The Windows app remains the first target while
-the viewer, import, stitching, telemetry, and export workflows stabilize.
+the viewer, import, virtual playback, telemetry, and export workflows stabilize.
