@@ -226,6 +226,7 @@
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -247,6 +248,14 @@
                                             </Border>
                                             <Border Background="{StaticResource GlassSidebarInputBrush}" CornerRadius="6" Padding="6,3,6,3" MaxWidth="92">
                                                 <TextBlock Text="{Binding ClipTypeText}" FontSize="9" Foreground="{StaticResource SidebarAccentBrush}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6">
+                                            <Border Background="{StaticResource GlassSidebarInputBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1" CornerRadius="8" Padding="7,3,7,3">
+                                                <TextBlock Text="{Binding FsdPercentText}" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource AccentGreenBrush}"/>
+                                            </Border>
+                                            <Border Background="{StaticResource GlassSidebarInputBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1" CornerRadius="8" Padding="7,3,7,3">
+                                                <TextBlock Text="{Binding DisengagementCountText}" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource AccentRedBrush}"/>
                                             </Border>
                                         </StackPanel>
                                     </Grid>
@@ -282,7 +291,7 @@
                         </GridView.Resources>
                         <GridView.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <ItemsWrapGrid Orientation="Horizontal" ItemWidth="122" ItemHeight="142"/>
+                                <ItemsWrapGrid Orientation="Horizontal" ItemWidth="128" ItemHeight="166"/>
                             </ItemsPanelTemplate>
                         </GridView.ItemsPanel>
                         <GridView.ItemContainerStyle>
@@ -298,10 +307,11 @@
                         </GridView.ItemContainerStyle>
                         <GridView.ItemTemplate>
                             <DataTemplate>
-                                <Border Width="116" Height="136" Background="{StaticResource GlassSidebarCardBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1" CornerRadius="9" Padding="6" HorizontalAlignment="Center">
+                                <Border Width="122" Height="160" Background="{StaticResource GlassSidebarCardBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1" CornerRadius="9" Padding="6" HorizontalAlignment="Center">
                                     <Grid RowSpacing="6">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="66"/>
+                                            <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
@@ -319,6 +329,18 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Text="{Binding TimeRangeText}" FontSize="9" FontWeight="Bold" Foreground="{StaticResource SidebarTextPrimaryBrush}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
                                             <TextBlock Grid.Column="1" Text="{Binding DurationText}" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource SidebarAccentBrush}" Margin="6,0,0,0"/>
+                                        </Grid>
+                                        <Grid Grid.Row="3" ColumnSpacing="4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Background="{StaticResource GlassSidebarInputBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1" CornerRadius="7" Padding="5,2,5,2">
+                                                <TextBlock Text="{Binding FsdPercentText}" FontSize="8" FontWeight="SemiBold" Foreground="{StaticResource AccentGreenBrush}"/>
+                                            </Border>
+                                            <Border Grid.Column="1" Background="{StaticResource GlassSidebarInputBrush}" BorderBrush="{StaticResource GlassBorderSoftBrush}" BorderThickness="1" CornerRadius="7" Padding="5,2,5,2" MinWidth="0">
+                                                <TextBlock Text="{Binding DisengagementCountText}" FontSize="8" FontWeight="SemiBold" Foreground="{StaticResource AccentRedBrush}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                            </Border>
                                         </Grid>
                                     </Grid>
                                 </Border>
@@ -386,7 +408,7 @@
                     <Border x:Name="AutonomyBadge" Visibility="Collapsed" Background="{StaticResource GlassPanelBrush}" CornerRadius="12" Padding="12,6,12,6" BorderThickness="1" BorderBrush="{StaticResource GlassBorderBrush}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse x:Name="BadgeDot" Width="6" Height="6" Fill="{StaticResource TextMutedBrush}"/>
-                            <TextBlock x:Name="BadgeText" Text="AUTONOMY: MANUAL" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock x:Name="BadgeText" Text="STATE: PARKED" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondaryBrush}"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>

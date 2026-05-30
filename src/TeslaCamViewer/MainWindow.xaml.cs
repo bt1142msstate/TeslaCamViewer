@@ -40,6 +40,7 @@ namespace TeslaCamViewer
         private readonly List<Process> _activeFfmpegProcesses = new List<Process>();
         private FileSystemWatcher _teslaCamWatcher;
         private DispatcherTimer _clipRefreshDebounceTimer;
+        private CancellationTokenSource _clipTelemetrySummaryCancellation = new CancellationTokenSource();
         private string _currentSourcePath = "";
         private string _watchedTeslaCamPath = "";
         private int _scanRequestVersion = 0;
@@ -192,6 +193,7 @@ namespace TeslaCamViewer
         {
             _isWindowClosing = true;
             CancelActiveStitch();
+            CancelClipTelemetrySummaryScan();
 
             try { _hudTimer?.Stop(); } catch { }
             try { _blinkerTimer?.Stop(); } catch { }
@@ -245,6 +247,7 @@ namespace TeslaCamViewer
         {
             path = (path ?? "").Trim();
             int scanVersion = Interlocked.Increment(ref _scanRequestVersion);
+            CancelClipTelemetrySummaryScan();
             bool isArchive = IsSupportedArchivePath(path);
             bool isDirectory = Directory.Exists(path);
             bool pathChanged = !string.Equals(path, _currentSourcePath, StringComparison.OrdinalIgnoreCase);
@@ -314,6 +317,7 @@ namespace TeslaCamViewer
                         ? $"Loaded compressed source: {Path.GetFileName(path)}"
                         : ActiveClipSubtitle.Text;
                     FilterAndRenderClips();
+                    StartClipTelemetrySummaryScan(loaded, scanVersion);
                 });
                 }
                 catch (Exception ex)
@@ -919,11 +923,177 @@ namespace TeslaCamViewer
                 clip.DurationText,
                 clip.SegmentCountText,
                 clip.CameraCountText,
+                clip.FsdPercentText,
+                clip.DisengagementCountText,
                 clip.ClipTypeText,
                 clip.Category
             });
 
             return searchable.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private CancellationToken BeginNewClipTelemetrySummaryScan()
+        {
+            try
+            {
+                _clipTelemetrySummaryCancellation?.Cancel();
+                _clipTelemetrySummaryCancellation?.Dispose();
+            }
+            catch { }
+
+            _clipTelemetrySummaryCancellation = new CancellationTokenSource();
+            return _clipTelemetrySummaryCancellation.Token;
+        }
+
+        private void CancelClipTelemetrySummaryScan()
+        {
+            try
+            {
+                _clipTelemetrySummaryCancellation?.Cancel();
+            }
+            catch { }
+        }
+
+        private void StartClipTelemetrySummaryScan(List<TeslaClip> clips, int scanVersion)
+        {
+            if (clips == null || clips.Count == 0 || _isWindowClosing)
+            {
+                return;
+            }
+
+            List<TeslaClip> clipSnapshot = clips.ToList();
+            CancellationToken cancellationToken = BeginNewClipTelemetrySummaryScan();
+
+            _ = Task.Run(() =>
+            {
+                foreach (TeslaClip clip in clipSnapshot)
+                {
+                    if (_isWindowClosing || cancellationToken.IsCancellationRequested || scanVersion != _scanRequestVersion)
+                    {
+                        return;
+                    }
+
+                    ClipTelemetrySummary summary = BuildClipTelemetrySummary(clip, cancellationToken);
+                    if (_isWindowClosing || cancellationToken.IsCancellationRequested || scanVersion != _scanRequestVersion)
+                    {
+                        return;
+                    }
+
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (_isWindowClosing || cancellationToken.IsCancellationRequested || scanVersion != _scanRequestVersion)
+                        {
+                            return;
+                        }
+
+                        clip.FsdPercentText = FormatFsdPercentPill(summary);
+                        clip.DisengagementCountText = FormatDisengagementPill(summary);
+                    });
+                }
+            }, cancellationToken);
+        }
+
+        private ClipTelemetrySummary BuildClipTelemetrySummary(TeslaClip clip, CancellationToken cancellationToken)
+        {
+            var summary = new ClipTelemetrySummary();
+            bool? wasFsdEngaged = null;
+
+            foreach (TeslaClipSegment segment in (clip?.Segments ?? new List<TeslaClipSegment>()).OrderBy(s => s.Timestamp))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (segment?.Cameras == null ||
+                    !segment.Cameras.TryGetValue("front", out string frontPath) ||
+                    string.IsNullOrWhiteSpace(frontPath) ||
+                    !File.Exists(frontPath))
+                {
+                    wasFsdEngaged = null;
+                    continue;
+                }
+
+                double segmentDurationSeconds = Math.Max(1.0, segment.EstimatedDurationSeconds);
+                List<SeiMetadata> records = TeslaSeiParser.ExtractTelemetry(frontPath, segmentDurationSeconds);
+                if (records == null || records.Count == 0)
+                {
+                    wasFsdEngaged = null;
+                    continue;
+                }
+
+                List<SeiMetadata> orderedRecords = records.OrderBy(r => r.OffsetSec).ToList();
+                double fallbackIntervalSeconds = segmentDurationSeconds / orderedRecords.Count;
+
+                for (int i = 0; i < orderedRecords.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    SeiMetadata record = orderedRecords[i];
+                    bool isFsdEngaged = record.AutopilotState == 1;
+                    summary.TelemetryRecordCount++;
+                    if (isFsdEngaged)
+                    {
+                        summary.FsdRecordCount++;
+                    }
+
+                    double intervalStart = i == 0 ? 0.0 : ClampTelemetryOffset(record.OffsetSec, segmentDurationSeconds);
+                    double intervalEnd = i + 1 < orderedRecords.Count
+                        ? ClampTelemetryOffset(orderedRecords[i + 1].OffsetSec, segmentDurationSeconds)
+                        : segmentDurationSeconds;
+
+                    if (intervalEnd <= intervalStart)
+                    {
+                        intervalEnd = Math.Min(segmentDurationSeconds, intervalStart + fallbackIntervalSeconds);
+                    }
+
+                    double intervalSeconds = Math.Max(0.0, intervalEnd - intervalStart);
+                    summary.TelemetrySeconds += intervalSeconds;
+                    if (isFsdEngaged)
+                    {
+                        summary.FsdSeconds += intervalSeconds;
+                    }
+
+                    if (wasFsdEngaged == true && !isFsdEngaged)
+                    {
+                        summary.FsdDisengagementCount++;
+                    }
+
+                    wasFsdEngaged = isFsdEngaged;
+                }
+            }
+
+            return summary;
+        }
+
+        private double ClampTelemetryOffset(double offsetSeconds, double durationSeconds)
+        {
+            if (double.IsNaN(offsetSeconds) || double.IsInfinity(offsetSeconds))
+            {
+                return 0.0;
+            }
+
+            return Math.Max(0.0, Math.Min(durationSeconds, offsetSeconds));
+        }
+
+        private string FormatFsdPercentPill(ClipTelemetrySummary summary)
+        {
+            if (summary == null || summary.TelemetryRecordCount <= 0)
+            {
+                return "FSD --";
+            }
+
+            double percent = summary.TelemetrySeconds > 0.0
+                ? summary.FsdSeconds * 100.0 / summary.TelemetrySeconds
+                : summary.FsdRecordCount * 100.0 / summary.TelemetryRecordCount;
+            return $"FSD {Math.Round(percent):0}%";
+        }
+
+        private string FormatDisengagementPill(ClipTelemetrySummary summary)
+        {
+            if (summary == null || summary.TelemetryRecordCount <= 0)
+            {
+                return "DIS --";
+            }
+
+            return $"{summary.FsdDisengagementCount} diseng.";
         }
 
         private void QueueThumbnailsForRealizedClips()
@@ -2395,41 +2565,25 @@ namespace TeslaCamViewer
                 HudSpeed.Text = double.IsNaN(speedMph) ? "00" : Math.Round(speedMph).ToString("00");
 
                 // 2. Autopilot Autonomy states
-                string inactiveDriveState = GetInactiveDriveStateText(data);
-                bool isStationaryOrParked = inactiveDriveState == "PARKED" || inactiveDriveState == "IDLE";
+                string driveState = GetDriveStateText(data);
+                bool hasAutonomyState = data.AutopilotState > 0;
 
-                if (data.AutopilotState > 0 && !isStationaryOrParked)
+                if (hasAutonomyState)
                 {
                     BadgeDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 48, 209, 88));
                     BadgeText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 200, 250));
                     AutonomyBadge.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(96, 255, 255, 255));
-
-                    if (data.AutopilotState == 1)
-                    {
-                        BadgeText.Text = "AUTONOMY: FSD ENGAGED";
-                        HudApText.Text = "FSD ENGAGED";
-                        HudApText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 200, 250));
-                    }
-                    else if (data.AutopilotState == 2)
-                    {
-                        BadgeText.Text = "AUTONOMY: AUTOSTEER";
-                        HudApText.Text = "AUTOSTEER";
-                        HudApText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 200, 250));
-                    }
-                    else
-                    {
-                        BadgeText.Text = "AUTONOMY: TACC ACTIVE";
-                        HudApText.Text = "TACC ACTIVE";
-                        HudApText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 200, 250));
-                    }
+                    BadgeText.Text = $"AUTONOMY: {driveState}";
+                    HudApText.Text = driveState;
+                    HudApText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 90, 200, 250));
                 }
                 else
                 {
                     BadgeDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 123, 132, 146));
                     BadgeText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 203, 213, 225));
                     AutonomyBadge.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(64, 255, 255, 255));
-                    BadgeText.Text = inactiveDriveState == "MANUAL" ? "AUTONOMY: MANUAL" : $"STATE: {inactiveDriveState}";
-                    HudApText.Text = inactiveDriveState;
+                    BadgeText.Text = $"STATE: {driveState}";
+                    HudApText.Text = driveState;
                     HudApText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 203, 213, 225));
                 }
 
@@ -2542,16 +2696,43 @@ namespace TeslaCamViewer
             return $"{direction} {Math.Abs(steeringWheelAngle).ToString("0.0", CultureInfo.InvariantCulture)}\u00B0";
         }
 
-        private string GetInactiveDriveStateText(SeiMetadata data)
+        private string GetDriveStateText(SeiMetadata data)
         {
-            if (data == null || IsParkGear(data.GearState))
+            if (data == null)
             {
                 return "PARKED";
             }
 
             double speedMph = GetDisplaySpeedMph(data);
             bool isMoving = !double.IsNaN(speedMph) && !double.IsInfinity(speedMph) && speedMph >= 0.5;
-            return isMoving ? "MANUAL" : "IDLE";
+            string motionState = IsParkGear(data.GearState)
+                ? "PARKED"
+                : isMoving ? "MOVING" : "IDLE";
+
+            if (data.AutopilotState > 0)
+            {
+                return $"{GetAutonomyModeText(data.AutopilotState)} {motionState}";
+            }
+
+            if (motionState == "PARKED")
+            {
+                return "PARKED";
+            }
+
+            return $"MANUAL {motionState}";
+        }
+
+        private string GetAutonomyModeText(uint autopilotState)
+        {
+            switch (autopilotState)
+            {
+                case 1:
+                    return "FSD";
+                case 2:
+                    return "AUTOSTEER";
+                default:
+                    return "TACC";
+            }
         }
 
         private double GetSignedSpeedMph(SeiMetadata data)
@@ -4697,6 +4878,15 @@ namespace TeslaCamViewer
             public string TypeText { get; set; }
         }
 
+        private sealed class ClipTelemetrySummary
+        {
+            public int TelemetryRecordCount { get; set; }
+            public int FsdRecordCount { get; set; }
+            public int FsdDisengagementCount { get; set; }
+            public double TelemetrySeconds { get; set; }
+            public double FsdSeconds { get; set; }
+        }
+
         private string FormatClipTitle(string firstTimestamp, string lastTimestamp, int segmentCount, string suffix = null)
         {
             return BuildClipDisplayMetadata(firstTimestamp, lastTimestamp, segmentCount, suffix).Title;
@@ -4850,6 +5040,8 @@ namespace TeslaCamViewer
     public class TeslaClip : INotifyPropertyChanged
     {
         private ImageSource _thumbnailSource;
+        private string _fsdPercentText = "FSD ...";
+        private string _disengagementCountText = "DIS ...";
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -4861,6 +5053,32 @@ namespace TeslaCamViewer
         public string DurationText { get; set; }
         public string ClipTypeText { get; set; }
         public List<TeslaClipSegment> Segments { get; set; } = new List<TeslaClipSegment>();
+
+        public string FsdPercentText
+        {
+            get => _fsdPercentText;
+            set
+            {
+                if (_fsdPercentText != value)
+                {
+                    _fsdPercentText = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FsdPercentText)));
+                }
+            }
+        }
+
+        public string DisengagementCountText
+        {
+            get => _disengagementCountText;
+            set
+            {
+                if (_disengagementCountText != value)
+                {
+                    _disengagementCountText = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisengagementCountText)));
+                }
+            }
+        }
 
         public ImageSource ThumbnailSource
         {
