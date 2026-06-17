@@ -23,7 +23,131 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <Border x:Name="TitleBarDragRegion" Grid.ColumnSpan="2" Height="32" VerticalAlignment="Top" Background="Transparent"/>
+        <Border x:Name="TitleBarDragRegion" Grid.ColumnSpan="2" Height="32" VerticalAlignment="Top" Background="Transparent" Margin="0,0,268,0" IsHitTestVisible="False"/>
+        <Button x:Name="ChromeUpdateStatusButton"
+                Grid.Column="1"
+                Canvas.ZIndex="100"
+                Width="30"
+                Height="30"
+                MinWidth="0"
+                MinHeight="0"
+                Padding="0"
+                Margin="0,1,224,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Background="{StaticResource GlassControlBrush}"
+                BorderBrush="{StaticResource GlassBorderSoftBrush}"
+                BorderThickness="1"
+                CornerRadius="15"
+                Click="ChromeUpdateStatusButton_Click"
+                ToolTipService.ToolTip="Update status">
+            <Button.Resources>
+                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#34FFFFFF"/>
+                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#4AFFFFFF"/>
+                <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#88FFFFFF"/>
+                <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#B0FFFFFF"/>
+            </Button.Resources>
+            <Grid Width="18" Height="18">
+                <ProgressRing x:Name="ChromeUpdateStatusRing"
+                              Width="16"
+                              Height="16"
+                              IsActive="False"
+                              Visibility="Collapsed"
+                              Foreground="{StaticResource AccentCyanBrush}"/>
+                <Path x:Name="ChromeUpdateCheckIcon"
+                      Data="M7.1,13.4 L2.7,9 L4.1,7.6 L7.1,10.6 L13.9,3.8 L15.3,5.2 Z"
+                      Fill="#FF56F39A"
+                      Stretch="Uniform"
+                      Width="16"
+                      Height="16"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"/>
+                <Path x:Name="ChromeUpdateAvailableIcon"
+                      Data="M8,1.5 A6.5,6.5 0 1 1 2.8,4.1 L1.3,4.1 L3.8,1.6 L6.3,4.1 L4.8,4.1 A4.8,4.8 0 1 0 8,3.2 Z M7.2,4.3 L8.8,4.3 L8.8,8.1 L10.6,6.3 L11.7,7.4 L8,11.1 L4.3,7.4 L5.4,6.3 L7.2,8.1 Z"
+                      Fill="{StaticResource AccentCyanBrush}"
+                      Stretch="Uniform"
+                      Width="17"
+                      Height="17"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Visibility="Collapsed"/>
+            </Grid>
+            <FlyoutBase.AttachedFlyout>
+                <Flyout x:Name="UpdateInfoFlyout"
+                        Placement="BottomEdgeAlignedRight"
+                        Opening="UpdateInfoFlyout_Opening">
+                    <Border Width="440"
+                            MaxHeight="620"
+                            Background="{StaticResource GlassPanelBrush}"
+                            BorderBrush="{StaticResource GlassBorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="16">
+                        <ScrollViewer MaxHeight="580"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="12">
+                                <TextBlock x:Name="UpdateInfoTitleText"
+                                           Text="Update Status"
+                                           FontSize="18"
+                                           FontWeight="Bold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                                <TextBlock x:Name="UpdateInfoSummaryText"
+                                           Text="Checking for updates..."
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
+                                <TextBlock Text="UPDATE FEATURES"
+                                           FontSize="10"
+                                           FontWeight="Bold"
+                                           CharacterSpacing="100"
+                                           Foreground="{StaticResource TextMutedBrush}"/>
+                                <TextBlock x:Name="UpdateFeaturesText"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           TextWrapping="WrapWholeWords"/>
+                                <TextBlock Text="CURRENT FEATURES"
+                                           FontSize="10"
+                                           FontWeight="Bold"
+                                           CharacterSpacing="100"
+                                           Foreground="{StaticResource TextMutedBrush}"/>
+                                <TextBlock x:Name="CurrentFeaturesText"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           TextWrapping="WrapWholeWords"/>
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="8"
+                                            HorizontalAlignment="Right">
+                                    <Button x:Name="UpdateInfoCheckBtn"
+                                            Content="Check again"
+                                            Click="UpdateInfoCheckBtn_Click"
+                                            Height="30"
+                                            MinWidth="96"
+                                            Padding="12,0"
+                                            FontSize="11"
+                                            Background="{StaticResource GlassControlBrush}"
+                                            BorderBrush="{StaticResource GlassBorderSoftBrush}"
+                                            Foreground="{StaticResource TextPrimaryBrush}"
+                                            CornerRadius="15"/>
+                                    <Button x:Name="UpdateInfoPrimaryBtn"
+                                            Content="Update"
+                                            Click="UpdateInfoPrimaryBtn_Click"
+                                            Height="30"
+                                            MinWidth="96"
+                                            Padding="12,0"
+                                            FontSize="11"
+                                            FontWeight="Bold"
+                                            Background="{StaticResource AccentCyanBrush}"
+                                            Foreground="#FFFFFFFF"
+                                            BorderThickness="0"
+                                            CornerRadius="15"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Flyout>
+            </FlyoutBase.AttachedFlyout>
+        </Button>
 
         <!-- ==========================================
              SIDEBAR BROWSER

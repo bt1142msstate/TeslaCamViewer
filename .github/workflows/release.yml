@@ -231,6 +231,12 @@ jobs:
           $notes = @"
           Windows x64 preview build for direct GitHub install.
 
+          What's new in this preview:
+
+          - Top-right update status now shows a checkmark when TESLA Cam is current, or an update icon when a newer release is available.
+          - Clicking the status icon opens release notes, current feature coverage, the installed version, and the available update action.
+          - The update status control now uses a dedicated hit-test layer so it remains clickable in the custom translucent title area.
+
           Recommended install:
 
           1. Download `TESLA-Cam-win-x64-Setup.exe`.

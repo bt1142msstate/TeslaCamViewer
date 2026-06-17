@@ -31,6 +31,15 @@ namespace TeslaCamViewer
 {
     public partial class MainWindow : Window
     {
+        private enum UpdateChromeState
+        {
+            Checking,
+            UpToDate,
+            UpdateAvailable,
+            PendingRestart,
+            Failed
+        }
+
         // --- DATA STATE ---
         private string _activeCategory = "RecentClips";
         private List<TeslaClip> _allClips = new List<TeslaClip>();
@@ -115,6 +124,11 @@ namespace TeslaCamViewer
         private GitHubSetupUpdateInfo _pendingSetupUpdate;
         private bool _isCheckingForUpdates = false;
         private bool _isApplyingUpdate = false;
+        private UpdateChromeState _updateChromeState = UpdateChromeState.Checking;
+        private string _latestUpdateVersionText = "";
+        private string _latestUpdateNotes = "";
+        private string _latestUpdateUrl = "";
+        private string _latestUpdatePublishedText = "";
 
         private const double SoftSyncThresholdSec = 0.06;
         private const double HardSyncThresholdSec = 0.45;
@@ -167,13 +181,20 @@ namespace TeslaCamViewer
             QueueStartupCleanup();
             LoadClipTelemetrySummaryCache();
             ConfigureUpdateHttpClient();
+            SetUpdateChromeState(UpdateChromeState.Checking);
 
             // Register KeyDown handler on Content Grid (since Window doesn't support KeyDown directly)
             var rootGrid = this.Content as Grid;
             if (rootGrid != null)
             {
                 rootGrid.KeyDown += Window_KeyDown;
+                rootGrid.Loaded += (s, e) => UpdateTitleBarPassthroughRegions();
+                rootGrid.SizeChanged += (s, e) => UpdateTitleBarPassthroughRegions();
             }
+
+            ChromeUpdateStatusButton.Loaded += (s, e) => UpdateTitleBarPassthroughRegions();
+            ChromeUpdateStatusButton.SizeChanged += (s, e) => UpdateTitleBarPassthroughRegions();
+            DispatcherQueue.TryEnqueue(() => UpdateTitleBarPassthroughRegions());
 
             // CRITICAL: Pre-initialize every MediaPlayerElement with a dedicated MediaPlayer.
             // In WinUI 3, MediaPlayer is NOT auto-created — calling .MediaPlayer before
@@ -270,7 +291,6 @@ namespace TeslaCamViewer
         {
             Title = "";
             ExtendsContentIntoTitleBar = true;
-            SetTitleBar(TitleBarDragRegion);
 
             try
             {
@@ -282,6 +302,7 @@ namespace TeslaCamViewer
                 }
 
                 var titleBar = AppWindow.TitleBar;
+                titleBar.ExtendsContentIntoTitleBar = true;
                 var transparent = Windows.UI.Color.FromArgb(0, 255, 255, 255);
                 var captionForeground = Windows.UI.Color.FromArgb(255, 248, 250, 252);
                 var captionDisabled = Windows.UI.Color.FromArgb(130, 148, 163, 184);
@@ -303,6 +324,51 @@ namespace TeslaCamViewer
             {
                 // Title bar coloring is optional; blank Title still removes the duplicate caption text.
             }
+        }
+
+        private void UpdateTitleBarPassthroughRegions()
+        {
+            try
+            {
+                if (!ExtendsContentIntoTitleBar ||
+                    ChromeUpdateStatusButton == null ||
+                    ChromeUpdateStatusButton.XamlRoot == null ||
+                    ChromeUpdateStatusButton.ActualWidth <= 0 ||
+                    ChromeUpdateStatusButton.ActualHeight <= 0)
+                {
+                    return;
+                }
+
+                double scale = ChromeUpdateStatusButton.XamlRoot.RasterizationScale;
+                GeneralTransform transform = ChromeUpdateStatusButton.TransformToVisual(null);
+                Windows.Foundation.Rect bounds = transform.TransformBounds(new Windows.Foundation.Rect(
+                    0,
+                    0,
+                    ChromeUpdateStatusButton.ActualWidth,
+                    ChromeUpdateStatusButton.ActualHeight));
+
+                Windows.Graphics.RectInt32 scaledRect = GetRect(bounds, scale, padding: 6);
+                Windows.Graphics.RectInt32 rawRect = GetRect(bounds, 1.0, padding: 6);
+
+                Microsoft.UI.Input.InputNonClientPointerSource nonClientInputSource =
+                    Microsoft.UI.Input.InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+                nonClientInputSource.SetRegionRects(
+                    Microsoft.UI.Input.NonClientRegionKind.Passthrough,
+                    scale == 1.0 ? new[] { rawRect } : new[] { scaledRect, rawRect });
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Update title bar passthrough regions", ex);
+            }
+        }
+
+        private static Windows.Graphics.RectInt32 GetRect(Windows.Foundation.Rect bounds, double scale, int padding = 0)
+        {
+            return new Windows.Graphics.RectInt32(
+                _X: (int)Math.Round(bounds.X * scale) - padding,
+                _Y: (int)Math.Round(bounds.Y * scale) - padding,
+                _Width: (int)Math.Round(bounds.Width * scale) + (padding * 2),
+                _Height: (int)Math.Round(bounds.Height * scale) + (padding * 2));
         }
 
         // --- SCAN LOGIC ---
@@ -1253,6 +1319,7 @@ namespace TeslaCamViewer
 
             try
             {
+                QueueUpdateChromeState(UpdateChromeState.Checking);
                 if (!silent)
                 {
                     QueueAppStatus("Checking for updates", true);
@@ -1265,7 +1332,10 @@ namespace TeslaCamViewer
                     _pendingVelopackUpdate = null;
                     _pendingVelopackAsset = pendingAsset;
                     _pendingSetupUpdate = null;
+                    string versionText = pendingAsset.Version?.ToString();
+                    await RefreshLatestReleaseDetailsAsync(versionText, cancellationToken);
                     QueueUpdateAvailable($"Update ready {FormatVersionLabel(pendingAsset.Version?.ToString())}", "Restart");
+                    QueueUpdateChromeState(UpdateChromeState.PendingRestart);
                     return;
                 }
 
@@ -1276,7 +1346,10 @@ namespace TeslaCamViewer
                     _pendingVelopackUpdate = velopackUpdate;
                     _pendingVelopackAsset = velopackUpdate.TargetFullRelease;
                     _pendingSetupUpdate = null;
+                    string versionText = _pendingVelopackAsset.Version?.ToString();
+                    await RefreshLatestReleaseDetailsAsync(versionText, cancellationToken);
                     QueueUpdateAvailable($"Update available {FormatVersionLabel(_pendingVelopackAsset.Version?.ToString())}", "Update");
+                    QueueUpdateChromeState(UpdateChromeState.UpdateAvailable);
                     return;
                 }
 
@@ -1287,13 +1360,17 @@ namespace TeslaCamViewer
                     _pendingVelopackUpdate = null;
                     _pendingVelopackAsset = null;
                     _pendingSetupUpdate = setupUpdate;
+                    ApplyLatestReleaseDetails(setupUpdate.TagName, setupUpdate.ReleaseName, setupUpdate.ReleaseNotes, setupUpdate.ReleaseUrl, setupUpdate.PublishedText);
                     QueueUpdateAvailable($"Update available {FormatVersionLabel(setupUpdate.TagName)}", "Update");
+                    QueueUpdateChromeState(UpdateChromeState.UpdateAvailable);
                     return;
                 }
 
                 _pendingVelopackUpdate = null;
                 _pendingVelopackAsset = null;
                 _pendingSetupUpdate = null;
+                ClearLatestReleaseDetails();
+                QueueUpdateChromeState(UpdateChromeState.UpToDate);
 
                 if (!silent)
                 {
@@ -1312,6 +1389,7 @@ namespace TeslaCamViewer
                     QueueAppStatus("Update check failed", false);
                     QueueUpdateButtonState(visible: false, enabled: false, label: "Update");
                 }
+                QueueUpdateChromeState(UpdateChromeState.Failed);
             }
             finally
             {
@@ -1415,11 +1493,25 @@ namespace TeslaCamViewer
 
                         if (TryGetJsonString(asset, "browser_download_url", out string downloadUrl))
                         {
+                            TryGetJsonString(release, "name", out string releaseName);
+                            TryGetJsonString(release, "body", out string releaseNotes);
+                            TryGetJsonString(release, "html_url", out string releaseUrl);
+                            string publishedText = "";
+                            if (TryGetJsonString(release, "published_at", out string publishedAt) &&
+                                DateTimeOffset.TryParse(publishedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset published))
+                            {
+                                publishedText = published.ToLocalTime().ToString("MMM d, yyyy h:mm tt", CultureInfo.CurrentCulture);
+                            }
+
                             return new GitHubSetupUpdateInfo
                             {
                                 TagName = tagName,
                                 AssetName = assetName,
-                                DownloadUrl = downloadUrl
+                                DownloadUrl = downloadUrl,
+                                ReleaseName = releaseName,
+                                ReleaseNotes = releaseNotes,
+                                ReleaseUrl = releaseUrl,
+                                PublishedText = publishedText
                             };
                         }
                     }
@@ -1435,6 +1527,110 @@ namespace TeslaCamViewer
             }
 
             return null;
+        }
+
+        private async Task RefreshLatestReleaseDetailsAsync(string versionText, CancellationToken cancellationToken)
+        {
+            string releaseTag = BuildReleaseTag(versionText);
+            GitHubReleaseDetails details = await TryFetchReleaseDetailsAsync(releaseTag, cancellationToken);
+            ApplyLatestReleaseDetails(releaseTag, details?.ReleaseName, details?.ReleaseNotes, details?.ReleaseUrl, details?.PublishedText);
+        }
+
+        private async Task<GitHubReleaseDetails> TryFetchReleaseDetailsAsync(string releaseTag, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(releaseTag))
+            {
+                return null;
+            }
+
+            try
+            {
+                string releaseUrl = $"{UpdateReleasesApiUrl}/tags/{Uri.EscapeDataString(releaseTag)}";
+                using var response = await _updateHttpClient.GetAsync(releaseUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+                JsonElement release = document.RootElement;
+
+                TryGetJsonString(release, "name", out string releaseName);
+                TryGetJsonString(release, "body", out string releaseNotes);
+                TryGetJsonString(release, "html_url", out string htmlUrl);
+                string publishedText = "";
+                if (TryGetJsonString(release, "published_at", out string publishedAt) &&
+                    DateTimeOffset.TryParse(publishedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset published))
+                {
+                    publishedText = published.ToLocalTime().ToString("MMM d, yyyy h:mm tt", CultureInfo.CurrentCulture);
+                }
+
+                return new GitHubReleaseDetails
+                {
+                    TagName = releaseTag,
+                    ReleaseName = releaseName,
+                    ReleaseNotes = releaseNotes,
+                    ReleaseUrl = htmlUrl,
+                    PublishedText = publishedText
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Log("Fetch release details", ex);
+                return null;
+            }
+        }
+
+        private string BuildReleaseTag(string versionText)
+        {
+            string normalized = NormalizeVersionText(versionText);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return "";
+            }
+
+            return normalized.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? normalized : "v" + normalized;
+        }
+
+        private void ApplyLatestReleaseDetails(string versionText, string releaseName, string releaseNotes, string releaseUrl, string publishedText)
+        {
+            _latestUpdateVersionText = NormalizeVersionText(versionText);
+            _latestUpdateNotes = NormalizeReleaseNotes(releaseNotes);
+            _latestUpdateUrl = releaseUrl ?? "";
+            _latestUpdatePublishedText = publishedText ?? "";
+        }
+
+        private void ClearLatestReleaseDetails()
+        {
+            _latestUpdateVersionText = "";
+            _latestUpdateNotes = "";
+            _latestUpdateUrl = "";
+            _latestUpdatePublishedText = "";
+        }
+
+        private string NormalizeReleaseNotes(string notes)
+        {
+            if (string.IsNullOrWhiteSpace(notes))
+            {
+                return "";
+            }
+
+            string normalized = notes.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+            normalized = Regex.Replace(normalized, @"(?m)^\s{0,3}#{1,6}\s*", "");
+            normalized = Regex.Replace(normalized, @"(?m)^\s*[-*]\s+", "- ");
+            normalized = Regex.Replace(normalized, @"\n{3,}", "\n\n");
+            const int maxLength = 1800;
+            if (normalized.Length > maxLength)
+            {
+                normalized = normalized.Substring(0, maxLength).TrimEnd() + "\n\nMore details are available on the GitHub release page.";
+            }
+
+            return normalized;
         }
 
         private async Task ApplyAvailableUpdateAsync()
@@ -1639,6 +1835,189 @@ namespace TeslaCamViewer
             AppUpdateBtn.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
             AppUpdateBtn.IsEnabled = enabled;
             AppUpdateBtn.Content = string.IsNullOrWhiteSpace(label) ? "Update" : label;
+        }
+
+        private void QueueUpdateChromeState(UpdateChromeState state)
+        {
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                if (!_isWindowClosing)
+                {
+                    SetUpdateChromeState(state);
+                }
+            });
+        }
+
+        private void SetUpdateChromeState(UpdateChromeState state)
+        {
+            _updateChromeState = state;
+
+            if (ChromeUpdateStatusButton == null ||
+                ChromeUpdateCheckIcon == null ||
+                ChromeUpdateAvailableIcon == null ||
+                ChromeUpdateStatusRing == null)
+            {
+                return;
+            }
+
+            bool isChecking = state == UpdateChromeState.Checking;
+            bool isUpdateAvailable = state == UpdateChromeState.UpdateAvailable || state == UpdateChromeState.PendingRestart;
+
+            ChromeUpdateStatusRing.Visibility = isChecking ? Visibility.Visible : Visibility.Collapsed;
+            ChromeUpdateStatusRing.IsActive = isChecking;
+            ChromeUpdateCheckIcon.Visibility = !isChecking && !isUpdateAvailable ? Visibility.Visible : Visibility.Collapsed;
+            ChromeUpdateAvailableIcon.Visibility = !isChecking && isUpdateAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+            ToolTipService.SetToolTip(ChromeUpdateStatusButton, GetUpdateChromeTooltip());
+            RefreshUpdateInfoFlyoutContent();
+        }
+
+        private string GetUpdateChromeTooltip()
+        {
+            switch (_updateChromeState)
+            {
+                case UpdateChromeState.Checking:
+                    return "Checking for updates";
+                case UpdateChromeState.UpdateAvailable:
+                    return "Update available";
+                case UpdateChromeState.PendingRestart:
+                    return "Update ready to restart";
+                case UpdateChromeState.Failed:
+                    return "Update check failed";
+                default:
+                    return "TESLA Cam is up to date";
+            }
+        }
+
+        private void ChromeUpdateStatusButton_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshUpdateInfoFlyoutContent();
+            FlyoutBase.ShowAttachedFlyout(ChromeUpdateStatusButton);
+        }
+
+        private void UpdateInfoFlyout_Opening(object sender, object e)
+        {
+            RefreshUpdateInfoFlyoutContent();
+        }
+
+        private async void UpdateInfoCheckBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await CheckForAppUpdateAsync(silent: false, _updateCancellation.Token);
+            RefreshUpdateInfoFlyoutContent();
+        }
+
+        private async void UpdateInfoPrimaryBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await ApplyAvailableUpdateAsync();
+        }
+
+        private void RefreshUpdateInfoFlyoutContent()
+        {
+            if (UpdateInfoTitleText == null ||
+                UpdateInfoSummaryText == null ||
+                UpdateFeaturesText == null ||
+                CurrentFeaturesText == null ||
+                UpdateInfoPrimaryBtn == null)
+            {
+                return;
+            }
+
+            string currentVersion = FormatVersionLabel(GetCurrentAppVersionText());
+            string latestVersion = !string.IsNullOrWhiteSpace(_latestUpdateVersionText)
+                ? FormatVersionLabel(_latestUpdateVersionText)
+                : "";
+
+            switch (_updateChromeState)
+            {
+                case UpdateChromeState.Checking:
+                    UpdateInfoTitleText.Text = "Checking For Updates";
+                    UpdateInfoSummaryText.Text = $"Current version: {currentVersion}";
+                    UpdateInfoPrimaryBtn.Content = "Update";
+                    UpdateInfoPrimaryBtn.IsEnabled = false;
+                    break;
+                case UpdateChromeState.UpdateAvailable:
+                    UpdateInfoTitleText.Text = "Update Available";
+                    UpdateInfoSummaryText.Text = string.IsNullOrWhiteSpace(latestVersion)
+                        ? $"Current version: {currentVersion}"
+                        : $"Current version: {currentVersion}\nAvailable version: {latestVersion}{FormatPublishedSuffix()}";
+                    UpdateInfoPrimaryBtn.Content = "Install update";
+                    UpdateInfoPrimaryBtn.IsEnabled = true;
+                    break;
+                case UpdateChromeState.PendingRestart:
+                    UpdateInfoTitleText.Text = "Update Ready";
+                    UpdateInfoSummaryText.Text = string.IsNullOrWhiteSpace(latestVersion)
+                        ? "The update is downloaded and ready to apply."
+                        : $"Version {latestVersion} is downloaded and ready to apply.";
+                    UpdateInfoPrimaryBtn.Content = "Restart";
+                    UpdateInfoPrimaryBtn.IsEnabled = true;
+                    break;
+                case UpdateChromeState.Failed:
+                    UpdateInfoTitleText.Text = "Update Check Failed";
+                    UpdateInfoSummaryText.Text = $"Current version: {currentVersion}\nThe last update check did not complete.";
+                    UpdateInfoPrimaryBtn.Content = "Update";
+                    UpdateInfoPrimaryBtn.IsEnabled = false;
+                    break;
+                default:
+                    UpdateInfoTitleText.Text = "Up To Date";
+                    UpdateInfoSummaryText.Text = $"Current version: {currentVersion}\nNo newer release is currently available.";
+                    UpdateInfoPrimaryBtn.Content = "Update";
+                    UpdateInfoPrimaryBtn.IsEnabled = false;
+                    break;
+            }
+
+            UpdateFeaturesText.Text = BuildUpdateFeaturesText();
+            CurrentFeaturesText.Text = BuildCurrentFeaturesText();
+        }
+
+        private string FormatPublishedSuffix()
+        {
+            return string.IsNullOrWhiteSpace(_latestUpdatePublishedText)
+                ? ""
+                : $"\nPublished: {_latestUpdatePublishedText}";
+        }
+
+        private string BuildUpdateFeaturesText()
+        {
+            if (_updateChromeState == UpdateChromeState.UpdateAvailable || _updateChromeState == UpdateChromeState.PendingRestart)
+            {
+                if (!string.IsNullOrWhiteSpace(_latestUpdateNotes))
+                {
+                    return _latestUpdateNotes;
+                }
+
+                string version = !string.IsNullOrWhiteSpace(_latestUpdateVersionText)
+                    ? FormatVersionLabel(_latestUpdateVersionText)
+                    : "the available update";
+                return $"Release notes were not included for {version}. The update package is available through GitHub.";
+            }
+
+            if (_updateChromeState == UpdateChromeState.Checking)
+            {
+                return "The app is checking GitHub and Velopack metadata for a newer release.";
+            }
+
+            if (_updateChromeState == UpdateChromeState.Failed)
+            {
+                return "The update check failed. Use Check again to retry.";
+            }
+
+            return "You are on the latest release currently known to the app.";
+        }
+
+        private string BuildCurrentFeaturesText()
+        {
+            return string.Join(Environment.NewLine, new[]
+            {
+                "- TeslaCam drive, copied-folder, and ZIP archive source loading",
+                "- Exact MP4-duration drive sessions with cached stitched playback",
+                "- Multi-camera front, rear, repeater, and pillar review",
+                "- Full-drive scrubbing with telemetry synchronized to video time",
+                "- FSD/manual/parked state telemetry with manual-driving timeline bands",
+                "- Speed, pedals, steering wheel, blinkers, GPS, gear, and G-force HUDs",
+                "- Clip list and collage browsing with virtualized sidebar rendering",
+                "- Marker-based range export for the current view or all camera views",
+                "- One-click GitHub/Velopack updates with portable installer fallback"
+            });
         }
 
         private bool IsReleaseNewerThanCurrent(string releaseTag)
@@ -5943,6 +6322,19 @@ namespace TeslaCamViewer
             public string TagName { get; set; }
             public string AssetName { get; set; }
             public string DownloadUrl { get; set; }
+            public string ReleaseName { get; set; }
+            public string ReleaseNotes { get; set; }
+            public string ReleaseUrl { get; set; }
+            public string PublishedText { get; set; }
+        }
+
+        private sealed class GitHubReleaseDetails
+        {
+            public string TagName { get; set; }
+            public string ReleaseName { get; set; }
+            public string ReleaseNotes { get; set; }
+            public string ReleaseUrl { get; set; }
+            public string PublishedText { get; set; }
         }
 
         private sealed class AppSemanticVersion
