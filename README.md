@@ -96,11 +96,11 @@ winget install --id BrandonTemple.FinalAppName -e
 
 Current preview release assets:
 
-- [Download Windows setup (recommended)](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.5/TESLA-Cam-win-x64-Setup.exe)
-- [Download portable ZIP](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.5/TESLA-Cam-win-x64-portable.zip)
-- [Download PowerShell fallback script](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.5/Install-TESLA-Cam.ps1)
-- [Download cleanup/uninstall script](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.5/Uninstall-TESLA-Cam.ps1)
-- [View checksums](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.5/SHA256SUMS.txt)
+- [Download Windows setup (recommended)](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.6/TESLA-Cam-win-x64-Setup.exe)
+- [Download portable ZIP](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.6/TESLA-Cam-win-x64-portable.zip)
+- [Download PowerShell fallback script](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.6/Install-TESLA-Cam.ps1)
+- [Download cleanup/uninstall script](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.6/Uninstall-TESLA-Cam.ps1)
+- [View checksums](https://github.com/bt1142msstate/TeslaCamViewer/releases/download/v0.1.0-preview.6/SHA256SUMS.txt)
 
 The setup installer installs the app under the user's profile and creates app
 shortcuts without requiring Visual Studio, build tools, Git, or manual

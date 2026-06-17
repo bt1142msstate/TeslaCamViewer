@@ -23,7 +23,19 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <Border x:Name="TitleBarDragRegion" Grid.ColumnSpan="2" Height="32" VerticalAlignment="Top" Background="Transparent" Margin="0,0,268,0" IsHitTestVisible="False"/>
+        <Border x:Name="TitleBarDragRegion" Grid.ColumnSpan="2" Height="32" VerticalAlignment="Top" Background="Transparent" Margin="0,0,198,0" IsHitTestVisible="False"/>
+        <Border x:Name="ChromeUpdateSeparator"
+                Grid.Column="1"
+                Canvas.ZIndex="101"
+                Width="2"
+                Height="20"
+                Margin="0,6,132,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Background="#88FFFFFF"
+                Opacity="1"
+                CornerRadius="0.5"
+                IsHitTestVisible="False"/>
         <Button x:Name="ChromeUpdateStatusButton"
                 Grid.Column="1"
                 Canvas.ZIndex="100"
@@ -32,7 +44,7 @@
                 MinWidth="0"
                 MinHeight="0"
                 Padding="0"
-                Margin="0,1,224,0"
+                Margin="0,1,150,0"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Top"
                 Background="{StaticResource GlassControlBrush}"
@@ -54,14 +66,20 @@
                               IsActive="False"
                               Visibility="Collapsed"
                               Foreground="{StaticResource AccentCyanBrush}"/>
-                <Path x:Name="ChromeUpdateCheckIcon"
-                      Data="M7.1,13.4 L2.7,9 L4.1,7.6 L7.1,10.6 L13.9,3.8 L15.3,5.2 Z"
-                      Fill="#FF56F39A"
-                      Stretch="Uniform"
-                      Width="16"
-                      Height="16"
+                <Grid x:Name="ChromeUpdateCheckIcon"
+                      Width="18"
+                      Height="18"
                       HorizontalAlignment="Center"
-                      VerticalAlignment="Center"/>
+                      VerticalAlignment="Center">
+                    <Ellipse Fill="#FF30D158"/>
+                    <Path Data="M7.1,13.4 L2.7,9 L4.1,7.6 L7.1,10.6 L13.9,3.8 L15.3,5.2 Z"
+                          Fill="#FFFFFFFF"
+                          Stretch="Uniform"
+                          Width="11"
+                          Height="11"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"/>
+                </Grid>
                 <Path x:Name="ChromeUpdateAvailableIcon"
                       Data="M8,1.5 A6.5,6.5 0 1 1 2.8,4.1 L1.3,4.1 L3.8,1.6 L6.3,4.1 L4.8,4.1 A4.8,4.8 0 1 0 8,3.2 Z M7.2,4.3 L8.8,4.3 L8.8,8.1 L10.6,6.3 L11.7,7.4 L8,11.1 L4.3,7.4 L5.4,6.3 L7.2,8.1 Z"
                       Fill="{StaticResource AccentCyanBrush}"

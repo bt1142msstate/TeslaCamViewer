@@ -340,6 +340,12 @@ namespace TeslaCamViewer
                 }
 
                 double scale = ChromeUpdateStatusButton.XamlRoot.RasterizationScale;
+                if (UpdateTitleBarChromeMargins(scale))
+                {
+                    DispatcherQueue.TryEnqueue(() => UpdateTitleBarPassthroughRegions());
+                    return;
+                }
+
                 GeneralTransform transform = ChromeUpdateStatusButton.TransformToVisual(null);
                 Windows.Foundation.Rect bounds = transform.TransformBounds(new Windows.Foundation.Rect(
                     0,
@@ -360,6 +366,57 @@ namespace TeslaCamViewer
             {
                 CrashLogger.Log("Update title bar passthrough regions", ex);
             }
+        }
+
+        private bool UpdateTitleBarChromeMargins(double scale)
+        {
+            if (scale <= 0)
+            {
+                scale = 1;
+            }
+
+            double captionInset = AppWindow?.TitleBar?.RightInset ?? 0;
+            double captionInsetDips = captionInset > 0 ? captionInset / scale : 132;
+            captionInsetDips = Math.Max(96, captionInsetDips);
+
+            double separatorRight = captionInsetDips + 5;
+            double buttonRight = captionInsetDips + 14;
+            double dragRight = buttonRight + ChromeUpdateStatusButton.ActualWidth + 18;
+
+            bool changed = false;
+            changed |= SetMarginIfChanged(ChromeUpdateStatusButton, new Thickness(0, 1, buttonRight, 0));
+
+            if (ChromeUpdateSeparator != null)
+            {
+                changed |= SetMarginIfChanged(ChromeUpdateSeparator, new Thickness(0, 6, separatorRight, 0));
+            }
+
+            if (TitleBarDragRegion != null)
+            {
+                changed |= SetMarginIfChanged(TitleBarDragRegion, new Thickness(0, 0, dragRight, 0));
+            }
+
+            return changed;
+        }
+
+        private static bool SetMarginIfChanged(FrameworkElement element, Thickness margin)
+        {
+            if (element == null)
+            {
+                return false;
+            }
+
+            Thickness current = element.Margin;
+            if (Math.Abs(current.Left - margin.Left) < 0.1 &&
+                Math.Abs(current.Top - margin.Top) < 0.1 &&
+                Math.Abs(current.Right - margin.Right) < 0.1 &&
+                Math.Abs(current.Bottom - margin.Bottom) < 0.1)
+            {
+                return false;
+            }
+
+            element.Margin = margin;
+            return true;
         }
 
         private static Windows.Graphics.RectInt32 GetRect(Windows.Foundation.Rect bounds, double scale, int padding = 0)

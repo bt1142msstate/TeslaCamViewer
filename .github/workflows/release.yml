@@ -233,9 +233,9 @@ jobs:
 
           What's new in this preview:
 
-          - Top-right update status now shows a checkmark when TESLA Cam is current, or an update icon when a newer release is available.
-          - Clicking the status icon opens release notes, current feature coverage, the installed version, and the available update action.
-          - The update status control now uses a dedicated hit-test layer so it remains clickable in the custom translucent title area.
+          - Refined the top-right update status placement so the checkmark sits closer to the native minimize button.
+          - Added a visible vertical divider between the update status control and Windows caption buttons.
+          - Updated the up-to-date icon to match the Mac Window Arranger update style: a green filled checkmark circle.
 
           Recommended install:
 
