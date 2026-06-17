@@ -233,9 +233,9 @@ jobs:
 
           What's new in this preview:
 
-          - Refined the top-right update status placement so the checkmark sits closer to the native minimize button.
-          - Added a visible vertical divider between the update status control and Windows caption buttons.
-          - Updated the up-to-date icon to match the Mac Window Arranger update style: a green filled checkmark circle.
+          - Refined the up-to-date title-bar icon so it more closely matches Mac Window Arranger's Apple `checkmark.circle.fill` proportions.
+          - Kept the update status control close to the native minimize button with a visible divider before the Windows caption buttons.
+          - Preserved the click-to-open update details flyout with current version, update notes, and current feature summary.
 
           Recommended install:
 

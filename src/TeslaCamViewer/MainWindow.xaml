@@ -66,20 +66,21 @@
                               IsActive="False"
                               Visibility="Collapsed"
                               Foreground="{StaticResource AccentCyanBrush}"/>
-                <Grid x:Name="ChromeUpdateCheckIcon"
-                      Width="18"
-                      Height="18"
-                      HorizontalAlignment="Center"
-                      VerticalAlignment="Center">
-                    <Ellipse Fill="#FF30D158"/>
-                    <Path Data="M7.1,13.4 L2.7,9 L4.1,7.6 L7.1,10.6 L13.9,3.8 L15.3,5.2 Z"
-                          Fill="#FFFFFFFF"
-                          Stretch="Uniform"
-                          Width="11"
-                          Height="11"
-                          HorizontalAlignment="Center"
-                          VerticalAlignment="Center"/>
-                </Grid>
+                <Canvas x:Name="ChromeUpdateCheckIcon"
+                        Width="17"
+                        Height="17"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                    <Ellipse Width="17"
+                             Height="17"
+                             Fill="#FF30D158"/>
+                    <Path Data="M4.75,8.85 L7.05,11.15 L12.35,5.85"
+                          Stroke="#FFFFFFFF"
+                          StrokeThickness="1.95"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round"/>
+                </Canvas>
                 <Path x:Name="ChromeUpdateAvailableIcon"
                       Data="M8,1.5 A6.5,6.5 0 1 1 2.8,4.1 L1.3,4.1 L3.8,1.6 L6.3,4.1 L4.8,4.1 A4.8,4.8 0 1 0 8,3.2 Z M7.2,4.3 L8.8,4.3 L8.8,8.1 L10.6,6.3 L11.7,7.4 L8,11.1 L4.3,7.4 L5.4,6.3 L7.2,8.1 Z"
                       Fill="{StaticResource AccentCyanBrush}"
