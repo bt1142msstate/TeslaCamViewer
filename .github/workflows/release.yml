@@ -233,8 +233,8 @@ jobs:
 
           What's new in this preview:
 
-          - Refined the up-to-date title-bar icon so it more closely matches Mac Window Arranger's Apple `checkmark.circle.fill` proportions.
-          - Kept the update status control close to the native minimize button with a visible divider before the Windows caption buttons.
+          - Removed the default white/glass circle behind the title-bar up-to-date checkmark.
+          - Kept the green SF-style checkmark icon visible as the default state with subtle hover and pressed feedback.
           - Preserved the click-to-open update details flyout with current version, update notes, and current feature summary.
 
           Recommended install:

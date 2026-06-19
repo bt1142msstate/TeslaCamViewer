@@ -47,17 +47,19 @@
                 Margin="0,1,150,0"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Top"
-                Background="{StaticResource GlassControlBrush}"
-                BorderBrush="{StaticResource GlassBorderSoftBrush}"
-                BorderThickness="1"
+                Background="Transparent"
+                BorderBrush="Transparent"
+                BorderThickness="0"
                 CornerRadius="15"
                 Click="ChromeUpdateStatusButton_Click"
                 ToolTipService.ToolTip="Update status">
             <Button.Resources>
-                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#34FFFFFF"/>
-                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#4AFFFFFF"/>
-                <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#88FFFFFF"/>
-                <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#B0FFFFFF"/>
+                <SolidColorBrush x:Key="ButtonBackground" Color="Transparent"/>
+                <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent"/>
+                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#18FFFFFF"/>
+                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#26FFFFFF"/>
+                <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent"/>
+                <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent"/>
             </Button.Resources>
             <Grid Width="18" Height="18">
                 <ProgressRing x:Name="ChromeUpdateStatusRing"
