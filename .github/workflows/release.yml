@@ -233,9 +233,9 @@ jobs:
 
           What's new in this preview:
 
-          - Removed the default white/glass circle behind the title-bar up-to-date checkmark.
-          - Kept the green SF-style checkmark icon visible as the default state with subtle hover and pressed feedback.
-          - Preserved the click-to-open update details flyout with current version, update notes, and current feature summary.
+          - Flattened the title-bar update details flyout so it renders as one glass panel instead of a nested container.
+          - Removed the default presenter scrollbar/chrome that made the panel look clipped.
+          - Kept the action buttons visible while release notes and feature details scroll inside the panel.
 
           Recommended install:
 

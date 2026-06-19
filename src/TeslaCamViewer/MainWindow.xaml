@@ -97,17 +97,31 @@
                 <Flyout x:Name="UpdateInfoFlyout"
                         Placement="BottomEdgeAlignedRight"
                         Opening="UpdateInfoFlyout_Opening">
-                    <Border Width="440"
-                            MaxHeight="620"
+                    <Flyout.FlyoutPresenterStyle>
+                        <Style TargetType="FlyoutPresenter">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderBrush" Value="Transparent"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="MinWidth" Value="420"/>
+                            <Setter Property="MaxWidth" Value="420"/>
+                            <Setter Property="ScrollViewer.HorizontalScrollMode" Value="Disabled"/>
+                            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+                        </Style>
+                    </Flyout.FlyoutPresenterStyle>
+                    <Border Width="420"
                             Background="{StaticResource GlassPanelBrush}"
                             BorderBrush="{StaticResource GlassBorderSoftBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="16">
-                        <ScrollViewer MaxHeight="580"
-                                      HorizontalScrollBarVisibility="Disabled"
-                                      VerticalScrollBarVisibility="Auto">
-                            <StackPanel Spacing="12">
+                        <Grid RowSpacing="12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel Grid.Row="0" Spacing="8">
                                 <TextBlock x:Name="UpdateInfoTitleText"
                                            Text="Update Status"
                                            FontSize="18"
@@ -118,6 +132,13 @@
                                            FontSize="12"
                                            Foreground="{StaticResource TextSecondaryBrush}"
                                            TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <ScrollViewer Grid.Row="1"
+                                          MaxHeight="340"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          HorizontalScrollMode="Disabled"
+                                          VerticalScrollBarVisibility="Auto">
+                                <StackPanel Spacing="12">
                                 <TextBlock Text="UPDATE FEATURES"
                                            FontSize="10"
                                            FontWeight="Bold"
@@ -136,35 +157,37 @@
                                            FontSize="12"
                                            Foreground="{StaticResource TextSecondaryBrush}"
                                            TextWrapping="WrapWholeWords"/>
-                                <StackPanel Orientation="Horizontal"
-                                            Spacing="8"
-                                            HorizontalAlignment="Right">
-                                    <Button x:Name="UpdateInfoCheckBtn"
-                                            Content="Check again"
-                                            Click="UpdateInfoCheckBtn_Click"
-                                            Height="30"
-                                            MinWidth="96"
-                                            Padding="12,0"
-                                            FontSize="11"
-                                            Background="{StaticResource GlassControlBrush}"
-                                            BorderBrush="{StaticResource GlassBorderSoftBrush}"
-                                            Foreground="{StaticResource TextPrimaryBrush}"
-                                            CornerRadius="15"/>
-                                    <Button x:Name="UpdateInfoPrimaryBtn"
-                                            Content="Update"
-                                            Click="UpdateInfoPrimaryBtn_Click"
-                                            Height="30"
-                                            MinWidth="96"
-                                            Padding="12,0"
-                                            FontSize="11"
-                                            FontWeight="Bold"
-                                            Background="{StaticResource AccentCyanBrush}"
-                                            Foreground="#FFFFFFFF"
-                                            BorderThickness="0"
-                                            CornerRadius="15"/>
                                 </StackPanel>
+                            </ScrollViewer>
+                            <StackPanel Grid.Row="2"
+                                        Orientation="Horizontal"
+                                        Spacing="8"
+                                        HorizontalAlignment="Right">
+                                <Button x:Name="UpdateInfoCheckBtn"
+                                        Content="Check again"
+                                        Click="UpdateInfoCheckBtn_Click"
+                                        Height="30"
+                                        MinWidth="96"
+                                        Padding="12,0"
+                                        FontSize="11"
+                                        Background="{StaticResource GlassControlBrush}"
+                                        BorderBrush="{StaticResource GlassBorderSoftBrush}"
+                                        Foreground="{StaticResource TextPrimaryBrush}"
+                                        CornerRadius="15"/>
+                                <Button x:Name="UpdateInfoPrimaryBtn"
+                                        Content="Update"
+                                        Click="UpdateInfoPrimaryBtn_Click"
+                                        Height="30"
+                                        MinWidth="96"
+                                        Padding="12,0"
+                                        FontSize="11"
+                                        FontWeight="Bold"
+                                        Background="{StaticResource AccentCyanBrush}"
+                                        Foreground="#FFFFFFFF"
+                                        BorderThickness="0"
+                                        CornerRadius="15"/>
                             </StackPanel>
-                        </ScrollViewer>
+                        </Grid>
                     </Border>
                 </Flyout>
             </FlyoutBase.AttachedFlyout>
